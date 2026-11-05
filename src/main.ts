@@ -62,9 +62,12 @@ function bindKeys(scene: Phaser.Scene) {
   const kb = scene.input.keyboard!, K = Phaser.Input.Keyboard.KeyCodes
   const map: [keyof typeof inp, number[]][] = [['left', [K.LEFT, K.A]], ['right', [K.RIGHT, K.D]], ['jump', [K.UP, K.W, K.SPACE]], ['down', [K.DOWN, K.S]], ['atk', [K.J, K.Z]], ['special', [K.K, K.X]], ['dodge', [K.L, K.C]], ['dash', [K.SHIFT]], ['block', [K.I]], ['grab', [K.U]], ['special2', [K.O]], ['pause', [K.ESC, K.P]]]
   const keys = map.map(([n, cs]) => [n, cs.map(c => kb.addKey(c, true))] as const)
-  return () => { if (DEMO) return; for (const [n, ks] of keys) (inp as any)[n] = ks.some(k => k.isDown) || (touch as any)[n] }
+  return () => { if (DEMO) return; for (const [n, ks] of keys) { (inp as any)[n] = ks.some(k => k.isDown) || !!touch[n] || !!latch[n]; latch[n] = false } }
 }
-const touch: any = {}
+const touch: any = {}, latch: any = {}
+// side margin (world px) visible beyond the 1280 design width when the screen is wider (Scale.EXPAND)
+export const margin = (sc: Phaser.Scene) => Math.max(0, (sc.scale.gameSize.width - W) / 2)
+function centerCam(sc: Phaser.Scene) { const f = () => { const m = margin(sc); sc.cameras.main.setScroll(-m, 0) }; f(); sc.scale.on('resize', f); sc.events.once('shutdown', () => sc.scale.off('resize', f)) }
 
 function btn(scene: Phaser.Scene, x: number, y: number, label: string, cb: () => void, w = 300) {
   const c = scene.add.container(x, y)
@@ -143,6 +146,7 @@ class Boot extends Phaser.Scene {
     for (const k of ['heroM', 'heroF', 'stoploss', 'exitliq', 'rugpull', 'bear']) this.load.image(k, 'sprites/' + k + '.png')
   }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     const g = this.make.graphics({}, false); g.fillStyle(0xffffff).fillCircle(8, 8, 8); g.generateTexture('dot', 16, 16)
     g.clear(); g.fillStyle(0xffffff).fillRect(0, 0, 6, 6); g.generateTexture('sq', 6, 6)
     document.fonts?.ready.then(() => this.start()); setTimeout(() => this.start(), 1500)
@@ -163,6 +167,7 @@ class Boot extends Phaser.Scene {
 class Title extends Phaser.Scene {
   constructor() { super('title') }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     overlay(''); paintArena(this, 'roof')
     const hero = this.add.image(250, FY + 40, 'heroM').setOrigin(0.5, 1).setScale(0.55)
     const her = this.add.image(1040, FY + 40, 'heroF').setOrigin(0.5, 1).setScale(0.55).setFlipX(true)
@@ -191,6 +196,7 @@ class Title extends Phaser.Scene {
 class Select extends Phaser.Scene {
   constructor() { super('select') }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this, 0x16233a, 0x2f5a6a)
     this.add.text(W / 2, 60, 'PICK YOUR WALLET', { fontFamily: FONT, fontSize: '60px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
     const pick_ = (k: string) => { run.hero = k; this.scene.start('arena') }
@@ -208,6 +214,7 @@ class Select extends Phaser.Scene {
 class Arena extends Phaser.Scene {
   constructor() { super('arena') }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this, 0x1e1834, 0x3a2a5a)
     this.add.text(W / 2, 50, 'CHOOSE YOUR CHART', { fontFamily: FONT, fontSize: '56px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
     const go = (a: string) => { run.arena = a; run.start = performance.now(); run.deaths = 0; run.learned = []; run.lines = {}; run.combos = 0; run.moveUse = {}; run.boss = 0; run.total = newStats(); this.scene.start('fight') }
@@ -230,6 +237,7 @@ class Arena extends Phaser.Scene {
 class HowTo extends Phaser.Scene {
   constructor() { super('howto') }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     paintArena(this, 'floor'); this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.6)
     this.add.text(W / 2, 36, 'THE DOCS (nobody reads these. You did. Bullish.)', { fontFamily: FONT, fontSize: '34px', color: '#f5c84c', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5)
     const rows = [
@@ -260,6 +268,7 @@ class HowTo extends Phaser.Scene {
 class Settings extends Phaser.Scene {
   constructor() { super('settings') }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this)
     this.add.text(W / 2, 90, 'SETTINGS', { fontFamily: FONT, fontSize: '60px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
     const mk = (y: number, label: () => string, f: () => void) => { const b = btn(this, W / 2, y, label(), () => { f(); (b.list[1] as Phaser.GameObjects.Text).setText(label()) }, 460); return b }
@@ -282,10 +291,11 @@ class Fight extends Phaser.Scene {
   tapCount = 0; lastTap = 0; holdT = 0; stillT = 0; lastPX = 0; lowPrev = 0; demoT = 0; demoLife = 0; retry = false; active: string[] = []
   init(d: any) { this.retry = !!d?.retry; (window as any).__fight = this }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     this.B = BOSSES[run.boss]; const B = this.B
     const AK = run.arena === 'home' ? HOME[run.boss] : run.arena; this.arenaKey = AK
-    paintArena(this, AK); this.add.rectangle(W / 2, H / 2, W, H, B.tint[1], 0.12)
-    const fl = this.add.graphics(); fl.fillStyle(ARENAS.find(a => a.key === AK)!.floor, 1).fillRect(0, FY, W, H - FY); fl.fillStyle(0x000000, 0.25).fillRect(0, FY, W, H - FY); fl.fillStyle(0xffffff, 0.08).fillRect(0, FY, W, 4)
+    const M = margin(this) + 40, n0 = this.children.list.length; paintArena(this, AK, W + 2 * M); this.children.list.slice(n0).forEach((o: any) => { o.x -= M }); this.add.rectangle(W / 2, H / 2, W + 2 * M, H, B.tint[1], 0.12)
+    const fl = this.add.graphics(); fl.fillStyle(ARENAS.find(a => a.key === AK)!.floor, 1).fillRect(-M, FY, W + 2 * M, H - FY); fl.fillStyle(0x000000, 0.25).fillRect(-M, FY, W + 2 * M, H - FY); fl.fillStyle(0xffffff, 0.08).fillRect(-M, FY, W + 2 * M, 4)
     this.fx = this.add.graphics()
     this.stats = newStats(); this.projs = []; this.hazards = []; this.freeze = 0; this.slow = 1; this.tapCount = 0; this.holdT = 0; this.stillT = 0
     this.walls = { l: 40, r: 1240 }; this.tiles = Array.from({ length: 12 }, () => ({ gone: 0, warn: 0 })); this.tileHeat = new Array(12).fill(0); this.tileT = 4
@@ -328,16 +338,35 @@ class Fight extends Phaser.Scene {
     $('qt').onclick = () => { if (!sure) { sure = true; $('qt').textContent = 'Sure? Run progress is lost. Tap again'; return } overlay(''); document.removeEventListener('keydown', kd); this.scene.resume(); stopMusic(); this.scene.start('title') }
   }
   touchUI() {
-    this.input.addPointer(3)
+    this.input.addPointer(4)
+    const m = margin(this), L = -m + 30, R = m - 30
+    const btns: { x: number; y: number; r: number; k: string; c: Phaser.GameObjects.Arc }[] = []
     const mk = (x: number, y: number, r: number, label: string, k: string) => {
-      const c = this.add.circle(x, y, r, 0xffffff, 0.16).setStrokeStyle(3, 0xffffff, 0.4).setDepth(60).setInteractive()
+      const c = this.add.circle(x, y, r, 0xffffff, 0.16).setStrokeStyle(3, 0xffffff, 0.4).setDepth(60)
       this.add.text(x, y, label, { fontFamily: FONT, fontSize: r > 50 ? '24px' : '18px', color: '#fff' }).setOrigin(0.5).setDepth(61).setAlpha(0.85)
-      c.on('pointerdown', () => { unlock(); touch[k] = true; c.setFillStyle(0xf5c84c, 0.5) })
-      const up = () => { touch[k] = false; c.setFillStyle(0xffffff, 0.16) }; c.on('pointerup', up); c.on('pointerout', up)
+      btns.push({ x, y, r, k, c })
     }
-    mk(85, 625, 54, '◀', 'left'); mk(215, 625, 54, '▶', 'right'); mk(150, 520, 44, '▲', 'jump'); mk(150, 690, 30, '▼', 'down')
-    mk(1185, 610, 64, 'HIT', 'atk'); mk(1060, 660, 42, 'ROLL', 'dodge'); mk(1050, 555, 42, 'BLOCK', 'block'); mk(1110, 470, 40, 'GRAB', 'grab')
-    mk(1205, 470, 40, 'PUMP', 'special'); mk(1205, 375, 38, 'HERO', 'special2'); mk(1105, 375, 38, 'DASH', 'dash')
+    mk(L + 85, 625, 58, '◀', 'left'); mk(L + 215, 625, 58, '▶', 'right'); mk(L + 150, 515, 46, '▲', 'jump'); mk(L + 150, 695, 32, '▼', 'down')
+    mk(R + 1185, 610, 64, 'HIT', 'atk'); mk(R + 1060, 660, 42, 'ROLL', 'dodge'); mk(R + 1050, 555, 42, 'BLOCK', 'block'); mk(R + 1110, 470, 40, 'GRAB', 'grab')
+    mk(R + 1205, 470, 40, 'PUMP', 'special'); mk(R + 1205, 375, 38, 'HERO', 'special2'); mk(R + 1105, 375, 38, 'DASH', 'dash')
+    // Native multi-touch: each finger owns one button; quick taps are latched so they never get lost between frames
+    const own = new Map<number, string>(), canvas = this.game.canvas
+    const hit = (cx: number, cy: number) => {
+      const rc = canvas.getBoundingClientRect(), sx = (cx - rc.left) * this.scale.gameSize.width / rc.width, sy = (cy - rc.top) * this.scale.gameSize.height / rc.height
+      const wp = this.cameras.main.getWorldPoint(sx, sy); let best: any = null, bd = 1e9
+      for (const b of btns) { const d = Math.hypot(wp.x - b.x, wp.y - b.y); if (d < b.r * 1.35 && d < bd) { bd = d; best = b } }
+      return best
+    }
+    const refresh = () => { const on = new Set(own.values()); for (const b of btns) { touch[b.k] = on.has(b.k); b.c.setFillStyle(on.has(b.k) ? 0xf5c84c : 0xffffff, on.has(b.k) ? 0.5 : 0.16) } }
+    const start = (e: TouchEvent) => { e.preventDefault(); try { unlock() } catch {} for (const t of Array.from(e.changedTouches)) { const b = hit(t.clientX, t.clientY); if (b) { own.set(t.identifier, b.k); latch[b.k] = true } } refresh() }
+    const move = (e: TouchEvent) => { e.preventDefault(); for (const t of Array.from(e.changedTouches)) { if (!own.has(t.identifier)) continue; const b = hit(t.clientX, t.clientY); const k = own.get(t.identifier)!; if (b && b.k !== k && (k === 'left' || k === 'right') && (b.k === 'left' || b.k === 'right')) own.set(t.identifier, b.k) } refresh() }
+    const end = (e: TouchEvent) => { for (const t of Array.from(e.changedTouches)) own.delete(t.identifier); refresh() }
+    const o = { passive: false } as any
+    canvas.addEventListener('touchstart', start, o); canvas.addEventListener('touchmove', move, o); canvas.addEventListener('touchend', end, o); canvas.addEventListener('touchcancel', end, o)
+    // mouse fallback (desktop with touch buttons on)
+    const md = (e: MouseEvent) => { const b = hit(e.clientX, e.clientY); if (b) { own.set(-1, b.k); latch[b.k] = true; refresh() } }, mu = () => { own.delete(-1); refresh() }
+    canvas.addEventListener('mousedown', md); window.addEventListener('mouseup', mu)
+    this.events.once('shutdown', () => { canvas.removeEventListener('touchstart', start); canvas.removeEventListener('touchmove', move); canvas.removeEventListener('touchend', end); canvas.removeEventListener('touchcancel', end); canvas.removeEventListener('mousedown', md); window.removeEventListener('mouseup', mu); own.clear(); for (const b of btns) { touch[b.k] = false; latch[b.k] = false } })
   }
   intro() {
     this.phase = 'intro'; const B = this.B
@@ -820,6 +849,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 class Results extends Phaser.Scene {
   constructor() { super('results') }
   create() {
+    centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this, 0x1a2a1a, 0x3a5a2a)
     const im = this.add.image(W / 2 - 300, FY + 40, run.hero).setOrigin(0.5, 1).setScale(0.6)
     this.tweens.add({ targets: im, y: FY + 20, yoyo: true, repeat: -1, duration: 400, ease: 'Quad.out' })
@@ -870,7 +900,8 @@ class Results extends Phaser.Scene {
 
 (window as any).__game = new Phaser.Game({
   type: Phaser.AUTO, parent: 'game', width: W, height: H, backgroundColor: '#120f1c',
-  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  scale: { mode: Phaser.Scale.EXPAND, autoCenter: Phaser.Scale.CENTER_BOTH },
+  input: { activePointers: 5 },
   scene: [Boot, Title, Select, Arena, HowTo, Settings, Fight, Results],
 })
 ;(window as any).__run = run
