@@ -1,0 +1,33 @@
+PASS GRAB: boss HP drops and boss is thrown >150px {"bossHp":[220,204],"bossX":[723,233]}
+PASS GRAB at 1.3x body width still connects {"dist":220,"dmg":16}
+PASS BLOCK vs swipe: damage <=20% of unblocked {"unblocked":11,"blocked":2}
+PASS BLOCK vs read: damage <=20% of unblocked {"unblocked":14,"blocked":2}
+PASS BLOCK vs charge: damage <=20% of unblocked {"unblocked":14,"blocked":2}
+PASS BLOCK shows guard visual 
+PASS DODGE through boss: ends behind it, HP unchanged {"player":970,"boss":802,"hp":100}
+PASS DODGE through a charge rush {"hp":100}
+PASS JUMP over boss: player x crosses boss x and lands {"player":953,"boss":787}
+PASS Walk into boss on ground is blocked by body (no walking through) {"gap":40}
+PASS Facing auto-flips after crossing {"face":-1}
+PASS MOTION: eased acceleration, no snapping {"frames":24,"firstStep":5.9,"peakStep":12.7,"maxStep":12.7}
+PASS PERF: game update+render CPU time < 8ms/frame (60fps budget 16.7ms) {"msPerFrame":2.52,"headlessFps":31}
+PASS 844x390: all touch buttons fully on screen {"buttons":10}
+PASS 844x390: PUNCH responds within 1 frame {"frames":0}
+PASS 844x390: DODGE responds within 1 frame {"frames":0}
+PASS 844x390: BLOCK responds within 1 frame {"frames":0}
+PASS 844x390: GRAB responds within 1 frame {"frames":0}
+PASS 844x390: JUMP responds within 1 frame {"frames":0}
+PASS 932x430: all touch buttons fully on screen {"buttons":10}
+PASS 932x430: PUNCH responds within 1 frame {"frames":0}
+PASS 932x430: DODGE responds within 1 frame {"frames":0}
+PASS 932x430: BLOCK responds within 1 frame {"frames":0}
+PASS 932x430: GRAB responds within 1 frame {"frames":0}
+PASS 932x430: JUMP responds within 1 frame {"frames":0}
+PASS 1024x340: all touch buttons fully on screen {"buttons":10}
+PASS 1024x340: PUNCH responds within 1 frame {"frames":0}
+PASS 1024x340: DODGE responds within 1 frame {"frames":0}
+PASS 1024x340: BLOCK responds within 1 frame {"frames":0}
+PASS 1024x340: GRAB responds within 1 frame {"frames":0}
+PASS 1024x340: JUMP responds within 1 frame {"frames":0}
+
+31 passed, 0 failed

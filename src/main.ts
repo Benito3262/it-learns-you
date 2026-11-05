@@ -329,7 +329,7 @@ class Fight extends Phaser.Scene {
   emit!: Phaser.GameObjects.Particles.ParticleEmitter; projs: Proj[] = []; hazards: any[] = []
   stats!: Stats; freeze = 0; slow = 1; phase = 'intro'; readKeys!: () => void
   walls = { l: 40, r: 1240 }; tiles: { gone: number; warn: number }[] = []; tileHeat: number[] = []; tileT = 0
-  combo = 0; comboT = 0; counterT = 0; landT = 0; ghostT = 0; dustT = 0; candleT = 7; pickT = 9; pickup: any = null; comboTxt!: Phaser.GameObjects.Text; tapCount = 0; lastTap = 0; holdT = 0; stillT = 0; lastPX = 0; lowPrev = 0; demoT = 0; demoLife = 0; retry = false; active: string[] = []
+  combo = 0; comboT = 0; blockFlash = 0; counterT = 0; landT = 0; ghostT = 0; dustT = 0; candleT = 7; pickT = 9; pickup: any = null; comboTxt!: Phaser.GameObjects.Text; tapCount = 0; lastTap = 0; holdT = 0; stillT = 0; lastPX = 0; lowPrev = 0; demoT = 0; demoLife = 0; retry = false; active: string[] = []
   init(d: any) { this.retry = !!d?.retry; (window as any).__fight = this }
   create() {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
@@ -390,7 +390,7 @@ class Fight extends Phaser.Scene {
       this.add.text(x, y, label, { fontFamily: FONT, fontSize: r > 50 ? '24px' : '18px', color: '#fff' }).setOrigin(0.5).setDepth(61).setAlpha(0.85)
       btns.push({ x, y, r, k, c })
     }
-    mk(L + 85, 625, 58, '◀', 'left'); mk(L + 215, 625, 58, '▶', 'right'); mk(L + 150, 515, 46, 'JUMP', 'jump'); mk(L + 150, 695, 32, '▼', 'down')
+    mk(L + 85, 600, 58, '◀', 'left'); mk(L + 215, 600, 58, '▶', 'right'); mk(L + 150, 490, 46, 'JUMP', 'jump'); mk(L + 150, 680, 30, '▼', 'down')
     mk(R + 1185, 610, 64, 'PUNCH', 'atk'); mk(R + 1060, 660, 42, 'DODGE', 'evade'); mk(R + 1050, 555, 42, 'BLOCK', 'block'); mk(R + 1110, 470, 40, 'GRAB', 'grab')
     mk(R + 1205, 470, 40, 'KICK', 'special'); mk(R + 1205, 375, 38, 'SPECIAL', 'special2')
     // Native multi-touch: each finger owns one button; quick taps are latched so they never get lost between frames
@@ -476,7 +476,8 @@ class Fight extends Phaser.Scene {
     if (p.st !== 'block') this.guard = Math.min(100, this.guard + 14 * dt)
     if (p.st === 'hurt') { if (p.t > (p.stun || 0.32)) { p.st = 'idle'; p.stun = 0 } }
     else if (p.st === 'block') { p.vx = 0; S.block += dt; if (!inp.block) p.st = 'idle' }
-    else if (p.st === 'evade') { const D = perk('bot') ? 0.34 : 0.28; p.vx = p.evDir * 950 * Math.max(0, 1 - p.t / D); if (p.t > D) { p.st = 'idle'; p.vx = 0 } }
+    else if (p.st === 'evade') { const D = perk('bot') ? 0.4 : 0.34; const k = p.t / D; p.vx = p.evDir * 1350 * (k < 0.7 ? 1 : Math.max(0, (1 - k) / 0.3)); if (p.t > D) { p.st = 'idle'; p.vx = p.evDir * 120 } }
+    else if (p.st === 'grab') this.updGrab(dt)
     else if (p.st === 'roll') { p.vx = p.rollDir * 620; if (p.t > 0.38) { p.st = 'idle'; p.vx = 0 } }
     else if (p.st === 'attack') {
       const m = MOVES[p.move]
@@ -492,9 +493,9 @@ class Fight extends Phaser.Scene {
     if (perk('staking') && p.st !== 'dead') p.hp = Math.min(100, p.hp + 2 * dt)
     if (pressed('evade') && p.ground && (p.st === 'idle' || p.st === 'block' || p.st === 'charge' || (p.st === 'attack' && p.move !== 'slam' && p.t > MOVES[p.move].a1))) { this.evade(mv); return }
     if (p.st === 'idle' || p.st === 'charge') {
-      if (p.st === 'idle') { p.vx = mv * 360; if (mv) p.face = mv }
+      if (p.st === 'idle') { const tv = mv * 380, a = (p.ground ? (mv ? 14 : 18) : 6); p.vx += (tv - p.vx) * Math.min(1, a * dt); if (Math.abs(p.vx) < 4) p.vx = 0; if (mv) p.face = mv }
       else p.vx = 0
-      if (pressed('jump') && p.ground) { p.vy = -900; p.ground = false; S.jumps++; sfx.jump() }
+      if (pressed('jump') && p.ground) { p.vy = -1180; if (mv) p.vx = mv * 420; p.ground = false; S.jumps++; sfx.jump() }
       if ((pressed('dash') || (pressed('dodge') === false && false)) && p.dashT <= 0 && p.ground) { p.dashT = 0.25; sfx.roll(); this.burst(p.x, FY - 10, 6, 0xffffff) }
       if (p.dashT > 0 && p.st === 'idle') p.vx = p.face * 820
       if (pressed('dodge') && p.ground) {
@@ -506,23 +507,23 @@ class Fight extends Phaser.Scene {
       if (pressed('special') && p.meter >= 40) this.sendIt()
       if (pressed('special2') && p.meter >= 50) this.heroSpecial()
       if (inp.block && p.ground && p.st === 'idle') { if (!prev.block) this.blockT0 = this.time.now; p.st = 'block'; p.t = 0; return }
-      if (pressed('grab') && p.ground && p.st === 'idle') { this.grab(); return }
+      if (pressed('grab') && p.ground && (p.st === 'idle' || p.st === 'charge')) { this.grab(); return }
       // attack input
-      if (pressed('atk')) { this.holdT = 0 }
-      if (inp.atk) { this.holdT += dt; if (this.holdT > 0.22 && p.st === 'idle' && p.ground && p.dashT <= 0) { p.st = 'charge'; p.t = 0 } }
-      if (released('atk')) {
-        if (p.st === 'charge') { p.st = 'idle'; this.doMove(this.holdT > 0.55 ? 'heavy' : 'punch') }
-        else if (!p.ground && inp.down) this.doMove('slam')
+      if (pressed('atk')) {
+        this.holdT = 0
+        if (!p.ground && inp.down) this.doMove('slam')
         else if (!p.ground) { if (this.airN < 3) { this.airN++; this.doMove('air'); p.vy = Math.min(p.vy, -160) } }
         else if (inp.down) this.doMove('sweep')
         else if (p.dashT > 0) { p.dashT = 0; this.doMove('dash') }
-        else {
+        else if (p.st === 'idle') {
           const now = this.time.now
           this.tapCount = now - this.lastTap < 380 ? this.tapCount + 1 : 1; this.lastTap = now
           this.doMove(this.tapCount === 1 ? 'punch' : this.tapCount === 2 ? 'uppercut' : 'finisher')
           if (this.tapCount >= 3) this.tapCount = 0
         }
       }
+      if (inp.atk && !pressed('atk')) { this.holdT += dt; if (this.holdT > 0.3 && p.st === 'idle' && p.ground) { p.st = 'charge'; p.t = 0 } }
+      if (released('atk') && p.st === 'charge') { p.st = 'idle'; this.doMove(this.holdT > 0.6 ? 'heavy' : 'punch') }
     }
     if (p.st === 'attack' && pressed('atk') && p.ground && p.move !== 'slam' && p.t > MOVES[p.move].a1) {
       // cancel into next combo hit for responsive chains
@@ -537,8 +538,9 @@ class Fight extends Phaser.Scene {
       if (tileGone && TILES()) { if (p.y > FY + 120) this.fall() }
       else { if (!p.ground) { this.shakeLand() } p.y = FY; p.vy = 0; p.ground = true }
     } else p.ground = p.y >= FY && !tileGone
+    { const bw = this.B.h * 0.18, d = p.x - b.x; if (p.ground && !b.air && p.st !== 'evade' && p.st !== 'roll' && p.st !== 'grab' && Math.abs(d) < bw) { const s2 = d === 0 ? -b.face : Math.sign(d); p.x += (b.x + s2 * bw - p.x) * 0.5 } }
     p.x = Phaser.Math.Clamp(p.x, this.walls.l + 30, this.walls.r - 30)
-    if (p.st !== 'attack' && p.st !== 'roll' && p.st !== 'hurt' && p.st !== 'evade') p.face = mv || (b.x > p.x ? 1 : -1)
+    if (p.st !== 'attack' && p.st !== 'roll' && p.st !== 'hurt' && p.st !== 'evade' && p.st !== 'grab') p.face = mv || (b.x > p.x ? 1 : -1)
   }
   shakeLand() { this.burst(this.p.x, FY, 10, 0xd8c8a0); this.landT = 0.16; this.shake(0.005, 70) }
   tileUnder(x: number) { if (!TILES()) return false; const i = Math.floor((x - 40) / 100); return i >= 0 && i < 12 && this.tiles[i].gone > 0 }
@@ -602,11 +604,27 @@ class Fight extends Phaser.Scene {
   }
   grab() {
     const p = this.p, b = this.boss, S = this.stats; S.moves['grab'] = (S.moves['grab'] || 0) + 1; run.moveUse['grab'] = (run.moveUse['grab'] || 0) + 1
-    if (Math.abs(b.x - p.x) > 190 || b.air || b.st === 'windup') { sfx.whiff(); p.st = 'hurt'; p.t = 0.1; return }
-    if ((this.active.includes('grabby') || FINAL()) && Math.random() < 0.5) { this.num(b.x, b.y - this.B.h - 10, 'ESCAPED!', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0; return }
-    run.combos++; const dir = -p.face
-    this.tweens.add({ targets: b, x: p.x + dir * 40, duration: 120, onComplete: () => { b.vy = -600; b.air = true; this.damageBoss(14, dir * 900, 0, 12, b.x); this.num(p.x, p.y - p.h - 30, 'THROW', '#7dffb0', 34) } })
-    p.face = dir; p.st = 'attack'; p.move = 'punch'; p.t = 0.2; p.hit = true
+    const reach = Math.max(230, this.B.h * 0.6)
+    p.face = b.x > p.x ? 1 : -1
+    if (Math.abs(b.x - p.x) > reach || b.y < FY - 60) { sfx.whiff(); p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true; this.num(p.x, p.y - p.h - 20, 'MISS', '#aaa', 26); return }
+    if ((this.active.includes('grabby') || FINAL()) && Math.random() < 0.3) { this.num(b.x, b.y - this.B.h - 10, 'ESCAPED!', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0.1; return }
+    run.combos++; sfx.block()
+    p.st = 'grab'; p.t = 0; p.vx = 0; p.iframe = 0.8; (p as any).thrown = false
+    b.st = 'stagger'; b.t = 1.4; b.rush = 0; b.kb = 0; b.vy = 0; b.air = false
+    this.tweens.add({ targets: b, x: p.x + p.face * 95, duration: 110, ease: 'Quad.out' })
+    this.num(p.x, p.y - p.h - 30, 'GRAB!', '#7dffb0', 34); this.freeze = 0.05
+  }
+  updGrab(_dt: number) {
+    const p = this.p, b = this.boss, q = p as any
+    if (p.t < 0.34) { b.x = p.x + p.face * (95 + Math.sin(p.t * 60) * 4); b.st = 'stagger'; b.t = Math.max(b.t, 0.8); return }
+    if (!q.thrown) {
+      q.thrown = true; const dir = -p.face
+      this.tweens.killTweensOf(b)
+      b.x = p.x + dir * 40; b.vy = -820; b.air = true; b.kb = dir * 1100; b.st = 'stagger'; b.t = 1.0
+      this.damageBoss(16, dir * 1100, 0, 12, b.x); b.vy = -820; b.air = true; b.kb = dir * 1100
+      this.num(p.x, p.y - p.h - 40, 'THROW!', '#ffd23f', 44); this.shake(0.02, 200); sfx.heavy(); p.face = dir
+    }
+    if (p.t > 0.62) { p.st = 'idle' }
   }
   heroSpecial() {
     const p = this.p; p.meter -= 50; run.combos++
@@ -630,7 +648,7 @@ class Fight extends Phaser.Scene {
     this.tweens.add({ targets: g, alpha: 0, duration: 260, onComplete: () => g.destroy() })
   }
   evade(mv: number) {
-    const p = this.p; p.evDir = mv || -p.face; p.st = 'evade'; p.t = 0; p.iframe = perk('bot') ? 0.42 : 0.32; p.vx = 0; sfx.roll()
+    const p = this.p; p.evDir = mv || -p.face; p.st = 'evade'; p.t = 0; p.iframe = perk('bot') ? 0.5 : 0.44; p.vx = 0; sfx.roll()
     this.stats.rolls[p.evDir < 0 ? 0 : 1]++
     const key = p.evDir < 0 ? 'dodgeL' : 'dodgeR', b = this.boss
     if (this.active.includes(key) && b.st !== 'windup' && b.st !== 'swipe' && Math.random() < 0.6) this.bossAttack('read', p.x + p.evDir * 200)
@@ -664,12 +682,15 @@ class Fight extends Phaser.Scene {
     if (!force && perk('diamond')) dmg = Math.max(1, Math.round(dmg * 0.75))
     if (!force && p.st === 'roll' && p.t > 0.12 && this.slow === 1) { this.perfect(); return false }
     if (!force && (p.iframe > 0 || p.st === 'dead')) return false
-    if (!force && p.st === 'block' && !unblock) {
-      if (this.time.now - this.blockT0 < 180) { this.parry(); return 'parry' }
-      this.guard -= dmg * 4; sfx.block(); this.burst(p.x + p.face * 30, p.y - p.h / 2, 6, 0x88ccff); p.vx = kx * 0.3; p.x += Math.sign(kx) * 20
-      if (this.guard <= 0) { this.guard = 0; p.st = 'hurt'; p.t = 0; p.stun = 0.9; this.num(p.x, p.y - p.h - 20, 'GUARD BROKEN', '#ffb347', 34); this.shake(0.015) }
-      else this.num(p.x, p.y - p.h - 10, 'BLOCKED', '#88ccff', 24)
-      return false
+    if (!force && p.st === 'block') {
+      if (this.time.now - this.blockT0 < 180 && !unblock) { this.parry(); return 'parry' }
+      const chip = Math.max(1, Math.round(dmg * 0.15)); p.hp = Math.max(1, p.hp - chip)
+      this.guard -= dmg * (unblock ? 3 : 1.8); sfx.block(); this.freeze = 0.05
+      const sx = p.x + (Math.sign(-kx) || p.face) * 45; this.burst(sx, p.y - p.h * 0.6, 16, 0x9fe0ff); this.burst(sx, p.y - p.h * 0.6, 8, 0xffffff)
+      p.x += Math.sign(kx) * 40; p.vx = 0; this.blockFlash = 0.18; this.shake(0.006, 80)
+      if (this.guard <= 0) { this.guard = 30; p.st = 'hurt'; p.t = 0; p.stun = 0.6; this.num(p.x, p.y - p.h - 20, 'GUARD BROKEN', '#ffb347', 34); this.shake(0.015) }
+      else this.num(p.x, p.y - p.h - 10, 'BLOCKED -' + chip, '#88ccff', 28)
+      return 'blocked'
     }
     p.hp = Math.max(0, p.hp - dmg); this.combo = 0; p.st = 'hurt'; p.t = 0; p.vx = kx; p.iframe = 0.5
     sfx.hurt(); this.shake(0.014, 160); this.freeze = 0.07; this.cameras.main.flash(80, 255, 60, 60)
@@ -965,7 +986,8 @@ class Fight extends Phaser.Scene {
       if (p.st === 'roll') { P.ba = -60; P.bsy = 0.7; P.ta = 30; this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.04; this.ghost(pi, run.hero) } }
       if (p.st === 'evade') { P.ta = -22 * p.evDir * fd; P.tx = -20; P.ba = 14; P.sq = 0.92; this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.03; this.ghost(pi, run.hero, 0x5bc8ff) } }
       if (p.dashT > 0 && p.st === 'idle') { P.ta = 18; P.sq = 0.94; this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.035; this.ghost(pi, run.hero) } }
-      if (p.st === 'block') { P.ta = -10; P.tx = -14; P.sq = 0.95; f2.fillStyle(0x99ccff, 0.55).fillRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10); f2.lineStyle(4, 0xffffff, 0.8).strokeRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10) }
+      if (p.st === 'block') { P.ta = -10; P.tx = -14; P.sq = 0.95; this.blockFlash = Math.max(0, this.blockFlash - dt); { const fl = this.blockFlash > 0 ? 1 : 0; f2.fillStyle(fl ? 0xffffff : 0x66bbff, fl ? 0.45 : 0.18).fillEllipse(p.x + fd * 20, p.y - p.h * 0.5, p.h * 0.75, p.h * 1.05); f2.lineStyle(6, fl ? 0xffffff : 0x9fe0ff, 0.9).strokeEllipse(p.x + fd * 20, p.y - p.h * 0.5, p.h * 0.75, p.h * 1.05) } arm(sh.x + fd * 34, sh.y - 30, 26, 0xffe9c2, false); f2.fillStyle(0x99ccff, 0.55).fillRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10); f2.lineStyle(4, 0xffffff, 0.8).strokeRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10) }
+      if (p.st === 'grab') { const th = p.t > 0.34 ? Math.min(1, (p.t - 0.34) / 0.15) : 0; P.ta = 14 - 50 * th; P.tx = 20 - 50 * th; P.sq = 0.94 + 0.12 * th; const gx = this.boss.x, gy = p.y - p.h * 0.62 - 120 * th; arm(gx - fd * 30, gy, 28, 0xffe9c2, false); arm(gx - fd * 50, gy + 30, 28, 0xffe9c2, false) }
       if (p.st === 'hurt') { const k = Math.max(0, 1 - p.t / 0.3); P.ta = -30 * k; P.tx = -34 * k; P.ba = 14 * k; P.sq = 1 - 0.12 * k }
       if (p.st === 'dead') { P.ta = -40; P.ba = 20 }
       if (this.counterT > 0) f2.lineStyle(3, 0x7dffb0, 0.6).strokeCircle(p.x, p.y - p.h / 2, p.h * 0.55 + Math.sin(tm * 20) * 6)
