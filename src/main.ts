@@ -1,6 +1,8 @@
 import Phaser from 'phaser'
 import { sfx, unlock, setMuted, audio, startMusic, stopMusic } from './audio'
-import { submit, top } from './net'
+import { submit, top, session, restore, loadProfile, signIn, signUp, signOut, createProfile } from './net'
+import { HABITS, BOSS_LINES, DEATH, DEATH_SUB, pick } from './text'
+import { ARENAS, HOME, paintArena } from './arenas'
 
 const W = 1280, H = 720, FY = 612
 const Q = new URLSearchParams(location.search)
@@ -18,30 +20,17 @@ const MOVES: Record<string, { dmg: number; range: number; dur: number; a0: numbe
   finisher: { dmg: 15, range: 150, dur: 0.42, a0: 0.1, a1: 0.22, kb: 420, label: '3-HIT FINISHER', meter: 12 },
   heavy: { dmg: 24, range: 160, dur: 0.45, a0: 0.08, a1: 0.2, kb: 560, label: 'POWER PUNCH', meter: 14 },
   dash: { dmg: 13, range: 150, dur: 0.32, a0: 0.02, a1: 0.2, kb: 300, label: 'DASH STRIKE', meter: 10 },
+  sweep: { dmg: 8, range: 150, dur: 0.34, a0: 0.06, a1: 0.18, kb: 60, label: 'LOW SWEEP', meter: 9 },
+  air: { dmg: 7, range: 120, dur: 0.22, a0: 0.04, a1: 0.14, kb: 80, label: 'AIR COMBO', meter: 7 },
+  squeeze: { dmg: 3, range: 130, dur: 0.9, a0: 0.05, a1: 0.85, kb: 20, label: 'SHORT SQUEEZE', meter: 0 },
   slam: { dmg: 16, range: 130, dur: 0.4, a0: 0.0, a1: 0.4, kb: 200, label: 'DOWN SLAM', meter: 10 },
 }
-const HABITS: Record<string, { line: string; counter: string }> = {
-  dodgeL: { line: 'You always dodge LEFT', counter: 'Boss now strikes where you roll left' },
-  dodgeR: { line: 'You always dodge RIGHT', counter: 'Boss now strikes where you roll right' },
-  jumper: { line: 'You jump a lot', counter: 'Anti-air swipes armed' },
-  still: { line: 'You stand still too long', counter: 'Sniper shots on idle targets' },
-  campL: { line: 'You camp the LEFT side', counter: 'Hazards will drop on the left' },
-  campR: { line: 'You camp the RIGHT side', counter: 'Hazards will drop on the right' },
-  campM: { line: 'You hug the middle', counter: 'Hazards will drop in the middle' },
-  runLow: { line: 'You run away when your HP is low', counter: 'Boss hunts faster when you are hurt' },
-  noDodge: { line: 'You never dodge', counter: 'Boss attacks come faster' },
-  spam_punch: { line: 'You spam PUNCH', counter: 'Boss blocks your punches' },
-  spam_uppercut: { line: 'You spam UPPERCUT', counter: 'Boss blocks your uppercuts' },
-  spam_finisher: { line: 'You lean on the 3-HIT FINISHER', counter: 'Boss blocks your finisher' },
-  spam_heavy: { line: 'You love the POWER PUNCH', counter: 'Boss blocks charged punches' },
-  spam_dash: { line: 'You open with DASH STRIKES', counter: 'Boss blocks dash strikes' },
-  spam_slam: { line: 'You spam DOWN SLAM', counter: 'Boss blocks down slams' },
-}
+const hl = (k: string) => run.lines[k] || (run.lines[k] = pick(HABITS[k]?.lines || ['You have a habit. It has notes.']))
 
 // ---------- run state ----------
-type Stats = { rolls: [number, number]; heat: number[]; still: number; t: number; jumps: number; moves: Record<string, number>; low: number; lowRetreat: number }
-const newStats = (): Stats => ({ rolls: [0, 0], heat: [0, 0, 0], still: 0, t: 0, jumps: 0, moves: {}, low: 0, lowRetreat: 0 })
-const run = { hero: 'heroM', start: 0, time: 0, deaths: 0, learned: [] as string[], combos: 0, moveUse: {} as Record<string, number>, boss: 0, total: newStats(), settings: { shake: localStorage.getItem('ily_shake') !== '0', touch: 'ontouchstart' in window } }
+type Stats = { block: number; rolls: [number, number]; heat: number[]; still: number; t: number; jumps: number; moves: Record<string, number>; low: number; lowRetreat: number }
+const newStats = (): Stats => ({ block: 0, rolls: [0, 0], heat: [0, 0, 0], still: 0, t: 0, jumps: 0, moves: {}, low: 0, lowRetreat: 0 })
+const run = { arena: 'home', lines: {} as Record<string, string>, hero: 'heroM', start: 0, time: 0, deaths: 0, learned: [] as string[], combos: 0, moveUse: {} as Record<string, number>, boss: 0, total: newStats(), settings: { shake: localStorage.getItem('ily_shake') !== '0', touch: 'ontouchstart' in window } }
 
 function analyze(s: Stats, max = 2): string[] {
   const out: string[] = [], has = (k: string) => run.learned.includes(k) || out.includes(k)
@@ -50,26 +39,28 @@ function analyze(s: Stats, max = 2): string[] {
   if (rt >= thr && s.rolls[0] / rt >= 0.7) add('dodgeL')
   if (rt >= thr && s.rolls[1] / rt >= 0.7) add('dodgeR')
   const mv = Object.entries(s.moves).sort((a, b) => b[1] - a[1]), tm = mv.reduce((a, b) => a + b[1], 0)
-  if (mv.length && mv[0][1] >= 6 && mv[0][1] / tm > 0.5) add('spam_' + mv[0][0])
+  if (mv.length && mv[0][1] >= 6 && mv[0][1] / tm > 0.5 && HABITS['spam_' + mv[0][0]]) add('spam_' + mv[0][0])
   if (s.t > 8 && s.jumps / s.t > 0.25) add('jumper')
   if (s.t > 8 && s.still / s.t > 0.3) add('still')
   const ht = s.heat[0] + s.heat[1] + s.heat[2]
   if (ht > 8) { const i = s.heat.indexOf(Math.max(...s.heat)); if (s.heat[i] / ht > 0.55) add(['campL', 'campM', 'campR'][i]) }
   if (s.low > 2 && s.lowRetreat / s.low > 0.55) add('runLow')
+  if (s.t > 8 && s.block / s.t > 0.3) add('turtle')
+  if ((s.moves['grab'] || 0) >= 4) add('grabby')
   if (s.t > 15 && rt === 0) add('noDodge')
   return out
 }
 const fmt = (ms: number) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
 
 // ---------- input ----------
-const inp = { left: false, right: false, jump: false, down: false, atk: false, special: false, dodge: false, dash: false }
+const inp = { block: false, grab: false, special2: false, pause: false, left: false, right: false, jump: false, down: false, atk: false, special: false, dodge: false, dash: false }
 const prev = { ...inp }
 const pressed = (k: keyof typeof inp) => inp[k] && !prev[k]
 const released = (k: keyof typeof inp) => !inp[k] && prev[k]
 
 function bindKeys(scene: Phaser.Scene) {
   const kb = scene.input.keyboard!, K = Phaser.Input.Keyboard.KeyCodes
-  const map: [keyof typeof inp, number[]][] = [['left', [K.LEFT, K.A]], ['right', [K.RIGHT, K.D]], ['jump', [K.UP, K.W, K.SPACE]], ['down', [K.DOWN, K.S]], ['atk', [K.J, K.Z]], ['special', [K.K, K.X]], ['dodge', [K.L, K.C]], ['dash', [K.SHIFT, K.I]]]
+  const map: [keyof typeof inp, number[]][] = [['left', [K.LEFT, K.A]], ['right', [K.RIGHT, K.D]], ['jump', [K.UP, K.W, K.SPACE]], ['down', [K.DOWN, K.S]], ['atk', [K.J, K.Z]], ['special', [K.K, K.X]], ['dodge', [K.L, K.C]], ['dash', [K.SHIFT]], ['block', [K.I]], ['grab', [K.U]], ['special2', [K.O]], ['pause', [K.ESC, K.P]]]
   const keys = map.map(([n, cs]) => [n, cs.map(c => kb.addKey(c, true))] as const)
   return () => { if (DEMO) return; for (const [n, ks] of keys) (inp as any)[n] = ks.some(k => k.isDown) || (touch as any)[n] }
 }
@@ -97,6 +88,50 @@ function bg(scene: Phaser.Scene, c1 = 0x1e1834, c2 = 0x5a3a6a) {
   }
   return g
 }
+function goLandscape() {
+  if (!('ontouchstart' in window)) return
+  try { const el: any = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.then?.(() => (screen.orientation as any)?.lock?.('landscape').catch(() => {})).catch(() => {}) } catch {}
+}
+function authScreen(done: () => void) {
+  let mode = localStorage.getItem('ily_sess') ? 'in' : 'up'
+  const needProfile = () => {
+    overlay(`<h2>CLAIM YOUR HANDLE</h2><p>One handle per wallet. It goes on the leaderboard, so choose wisely.</p>
+<label>Username or X handle</label><input id="hn" maxlength="20" placeholder="e.g. trextxxy" value="${esc(localStorage.getItem('ily_pending') || '')}">
+<label>Main fighter</label><div class="row"><button id="hm" class="alt">HIM</button><button id="hf" class="alt">HER</button></div>
+<button id="go" style="width:100%">Lock it in</button><div class="err" id="er"></div>`)
+    let hero = 'M'; const $ = (i: string) => document.getElementById(i) as any
+    const hi = () => { $('hm').className = hero === 'M' ? '' : 'alt'; $('hf').className = hero === 'F' ? '' : 'alt' }; hi()
+    $('hm').onclick = () => { hero = 'M'; hi() }; $('hf').onclick = () => { hero = 'F'; hi() }
+    $('go').onclick = async () => { const u = $('hn').value.trim().replace(/^@/, ''); $('er').textContent = ''; try { await createProfile(u, hero); done() } catch (e: any) { $('er').textContent = e.message } }
+  }
+  const draw = () => {
+    overlay(`<h2>${mode === 'up' ? 'REGISTER TO FIGHT' : 'WELCOME BACK'}</h2><p>${mode === 'up' ? 'The bosses need to know who they are studying.' : 'They remember you. Log in.'}</p>
+<label>Email</label><input id="em" type="email" autocomplete="email" placeholder="you@domain.com">
+<label>Password</label><input id="pw" type="password" autocomplete="${mode === 'up' ? 'new-password' : 'current-password'}" placeholder="8+ characters">
+${mode === 'up' ? '<label>Username or X handle</label><input id="hn" maxlength="20" placeholder="e.g. trextxxy">' : ''}
+<button id="go" style="width:100%">${mode === 'up' ? 'Create account' : 'Log in'}</button>
+<button id="sw" class="alt" style="width:100%">${mode === 'up' ? 'Have an account? Log in' : 'New here? Register'}</button><div class="err" id="er"></div>`)
+    const $ = (i: string) => document.getElementById(i) as any
+    $('sw').onclick = () => { mode = mode === 'up' ? 'in' : 'up'; draw() }
+    $('go').onclick = async () => {
+      const em = $('em').value.trim(), pw = $('pw').value; $('er').textContent = ''
+      if (!/^\S+@\S+\.\S+$/.test(em)) { $('er').textContent = 'That email looks like a scam address.'; return }
+      if (pw.length < 8) { $('er').textContent = 'Password needs 8+ characters. This is not a seed phrase, but still.'; return }
+      $('go').disabled = true
+      try {
+        if (mode === 'up') {
+          const hn = ($('hn').value || '').trim().replace(/^@/, '')
+          if (!/^[A-Za-z0-9_]{2,20}$/.test(hn)) throw new Error('Handle: 2-20 letters, numbers or _')
+          localStorage.setItem('ily_pending', hn)
+          const live = await signUp(em, pw)
+          if (!live) { mode = 'in'; draw(); document.getElementById('er')!.textContent = 'Check your inbox to confirm your email, then log in here.'; return }
+        } else await signIn(em, pw)
+        if (await loadProfile()) done(); else if (mode === 'up' && localStorage.getItem('ily_pending')) { try { await createProfile(localStorage.getItem('ily_pending')!, 'M'); done() } catch { needProfile() } } else needProfile()
+      } catch (e: any) { $('er').textContent = e.message; $('go').disabled = false }
+    }
+  }
+  draw()
+}
 function overlay(html: string) { const o = document.getElementById('ov')!; document.getElementById('ovc')!.innerHTML = html; o.style.display = html ? 'flex' : 'none' }
 
 // ---------- scenes ----------
@@ -116,31 +151,39 @@ class Boot extends Phaser.Scene {
   start() {
     if (this.started) return; this.started = true
     if (DEMO) { run.hero = Q.get('hero') === 'F' ? 'heroF' : 'heroM'; run.boss = +(Q.get('boss') || 0); run.start = performance.now(); this.scene.start('fight') }
-    else this.scene.start('title')
+    else this.auth()
+  }
+  async auth() {
+    const ok = (await restore()) && (await loadProfile().catch(() => false))
+    if (ok) { run.hero = session.hero === 'F' ? 'heroF' : 'heroM'; this.scene.start('title'); return }
+    authScreen(() => { run.hero = session.hero === 'F' ? 'heroF' : 'heroM'; overlay(''); this.scene.start('title') })
   }
 }
 
 class Title extends Phaser.Scene {
   constructor() { super('title') }
   create() {
-    overlay(''); bg(this)
+    overlay(''); paintArena(this, 'roof')
     const hero = this.add.image(250, FY + 40, 'heroM').setOrigin(0.5, 1).setScale(0.55)
     const her = this.add.image(1040, FY + 40, 'heroF').setOrigin(0.5, 1).setScale(0.55).setFlipX(true)
     const bear = this.add.image(W / 2, FY + 70, 'bear').setOrigin(0.5, 1).setScale(0.62).setAlpha(0.35).setTint(0x553344)
     this.tweens.add({ targets: [hero, her], scaleY: 0.57, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     this.tweens.add({ targets: bear, scale: 0.66, alpha: 0.5, duration: 2200, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-    const t = this.add.text(W / 2, 120, 'IT LEARNS YOU', { fontFamily: FONT, fontSize: '104px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 12 }).setOrigin(0.5)
+    const t = this.add.text(W / 2, 110, 'IT LEARNS YOU', { fontFamily: FONT, fontSize: '104px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 12 }).setOrigin(0.5)
     t.setShadow(0, 8, '#000', 12, true, true)
-    this.tweens.add({ targets: t, y: 128, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-    this.add.text(W / 2, 200, 'a crypto boss rush where every boss studies how you fight', { fontFamily: 'Nunito', fontSize: '24px', color: '#e8dcff', fontStyle: '800' }).setOrigin(0.5)
-    btn(this, W / 2, 300, 'PLAY', () => this.scene.start('select'))
-    btn(this, W / 2, 380, 'HOW TO PLAY', () => this.scene.start('howto'))
-    btn(this, W / 2, 460, 'LEADERBOARD', () => showBoard(() => this.scene.restart()))
-    btn(this, W / 2, 540, 'SETTINGS', () => this.scene.start('settings'))
-    const ticker = ['IT LEARNED: You always dodge LEFT', 'IT LEARNED: You spam UPPERCUT', 'IT LEARNED: You camp the RIGHT side', 'IT LEARNED: You jump a lot']
-    const tk = this.add.text(W / 2, 680, '', { fontFamily: 'monospace', fontSize: '20px', color: '#ff8f8f' }).setOrigin(0.5)
-    let i = 0; this.time.addEvent({ delay: 2200, loop: true, callback: () => { tk.setText(ticker[i++ % ticker.length]).setAlpha(0); this.tweens.add({ targets: tk, alpha: 1, duration: 300 }) } })
-    tk.setText(ticker[3])
+    this.tweens.add({ targets: t, y: 118, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    this.add.text(W / 2, 188, 'Four bosses. One dataset. The dataset is you.', { fontFamily: 'Nunito', fontSize: '24px', color: '#fff', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    this.add.text(W / 2, 222, 'gm, @' + (session.username || 'anon'), { fontFamily: 'Nunito', fontSize: '18px', color: '#7dffb0', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    btn(this, W / 2, 290, 'APE IN', () => { goLandscape(); this.scene.start('select') })
+    btn(this, W / 2, 365, 'READ THE DOCS', () => this.scene.start('howto'))
+    btn(this, W / 2, 440, 'LEADERBOARD', () => showBoard(() => this.scene.restart()))
+    btn(this, W / 2, 515, 'SETTINGS', () => this.scene.start('settings'))
+    const lo = this.add.text(W - 20, H - 20, 'log out', { fontFamily: 'Nunito', fontSize: '16px', color: '#ddd' }).setOrigin(1).setInteractive({ useHandCursor: true })
+    lo.on('pointerdown', () => { signOut(); location.reload() })
+    const ticker = Object.values(HABITS).map(h => 'IT LEARNED: ' + h.lines[0])
+    const tk = this.add.text(W / 2, 680, '', { fontFamily: 'monospace', fontSize: '20px', color: '#ffb0b0', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    let i = 0; const nx = () => { tk.setText(ticker[i++ % ticker.length]).setAlpha(0); this.tweens.add({ targets: tk, alpha: 1, duration: 300 }) }; nx()
+    this.time.addEvent({ delay: 2600, loop: true, callback: nx })
     this.input.keyboard!.once('keydown-ENTER', () => this.scene.start('select'))
   }
 }
@@ -149,39 +192,68 @@ class Select extends Phaser.Scene {
   constructor() { super('select') }
   create() {
     bg(this, 0x16233a, 0x2f5a6a)
-    this.add.text(W / 2, 70, 'CHOOSE YOUR FIGHTER', { fontFamily: FONT, fontSize: '60px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
-    const pick = (k: string) => { run.hero = k; run.start = performance.now(); run.deaths = 0; run.learned = []; run.combos = 0; run.moveUse = {}; run.boss = 0; run.total = newStats(); this.scene.start('fight') }
-    ;[['heroM', 380, 'HIM'], ['heroF', 900, 'HER']].forEach(([k, x, n]) => {
-      const g = this.add.graphics(); g.fillStyle(0xffffff, 0.08).fillRoundedRect(+x - 190, 130, 380, 470, 30)
-      const im = this.add.image(+x, 560, k as string).setOrigin(0.5, 1).setScale(0.68).setInteractive({ useHandCursor: true })
-      this.tweens.add({ targets: im, scaleY: 0.7, duration: 800 + +x / 3, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-      im.on('pointerover', () => im.setTint(0xfff2c0)); im.on('pointerout', () => im.clearTint()); im.on('pointerdown', () => { unlock(); sfx.ui(); pick(k as string) })
-      btn(this, +x, 650, 'PLAY ' + n, () => pick(k as string), 260)
+    this.add.text(W / 2, 60, 'PICK YOUR WALLET', { fontFamily: FONT, fontSize: '60px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
+    const pick_ = (k: string) => { run.hero = k; this.scene.start('arena') }
+    ;([['heroM', 380, 'HIM', 'Special: GREEN CANDLE beam'], ['heroF', 900, 'HER', 'Special: SHORT SQUEEZE flurry']] as const).forEach(([k, x, n, sp]) => {
+      const g = this.add.graphics(); g.fillStyle(0xffffff, 0.08).fillRoundedRect(x - 190, 110, 380, 470, 30)
+      const im = this.add.image(x, 540, k).setOrigin(0.5, 1).setScale(0.64).setInteractive({ useHandCursor: true })
+      this.tweens.add({ targets: im, scaleY: 0.66, duration: 800 + x / 3, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      this.add.text(x, 560, sp, { fontFamily: 'Nunito', fontStyle: '800', fontSize: '18px', color: '#7dffb0' }).setOrigin(0.5)
+      im.on('pointerdown', () => { unlock(); sfx.ui(); pick_(k) })
+      btn(this, x, 640, 'PLAY ' + n, () => pick_(k), 260)
     })
-    this.input.keyboard!.on('keydown-LEFT', () => pick('heroM')); this.input.keyboard!.on('keydown-RIGHT', () => pick('heroF'))
+  }
+}
+
+class Arena extends Phaser.Scene {
+  constructor() { super('arena') }
+  create() {
+    bg(this, 0x1e1834, 0x3a2a5a)
+    this.add.text(W / 2, 50, 'CHOOSE YOUR CHART', { fontFamily: FONT, fontSize: '56px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
+    const go = (a: string) => { run.arena = a; run.start = performance.now(); run.deaths = 0; run.learned = []; run.lines = {}; run.combos = 0; run.moveUse = {}; run.boss = 0; run.total = newStats(); this.scene.start('fight') }
+    ARENAS.forEach((a, i) => {
+      const x = 180 + (i % 2) * 460 + 160, y = 140 + Math.floor(i / 2) * 230
+      const rt = this.add.renderTexture(0, 0, W, H).setVisible(false)
+      const objs = paintArena(this, a.key); rt.draw(objs as any); objs.forEach(o => o.destroy())
+      rt.saveTexture('thumb_' + a.key)
+      const im = this.add.image(x, y + 90, 'thumb_' + a.key).setDisplaySize(400, 170).setInteractive({ useHandCursor: true })
+      this.add.text(x, y + 190, a.name.toUpperCase(), { fontFamily: FONT, fontSize: '26px', color: '#fff', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5)
+      this.add.text(x, y + 216, a.sub, { fontFamily: 'Nunito', fontStyle: '800', fontSize: '15px', color: '#cfe' }).setOrigin(0.5)
+      im.on('pointerover', () => im.setTint(0xfff2c0)); im.on('pointerout', () => im.clearTint())
+      im.on('pointerdown', () => { sfx.ui(); go(a.key) })
+    })
+    btn(this, 1110, 330, 'HOME TURF', () => go('home'), 260)
+    this.add.text(1110, 380, 'each boss fights\nin its own arena', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '15px', color: '#cfe', align: 'center' }).setOrigin(0.5, 0)
   }
 }
 
 class HowTo extends Phaser.Scene {
   constructor() { super('howto') }
   create() {
-    bg(this, 0x1b2a22, 0x2f5a44)
-    this.add.text(W / 2, 50, 'HOW TO PLAY', { fontFamily: FONT, fontSize: '56px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
+    paintArena(this, 'floor'); this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.6)
+    this.add.text(W / 2, 36, 'THE DOCS (nobody reads these. You did. Bullish.)', { fontFamily: FONT, fontSize: '34px', color: '#f5c84c', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5)
     const rows = [
-      ['Move', 'A / D  or  Arrows', 'Walk left and right'], ['Jump', 'W / Up / Space', 'Jump over shots & shockwaves'],
-      ['Punch', 'J  (tap once)', 'Quick jab'], ['Uppercut', 'J J  (double tap)', 'Launches the boss into the air'],
-      ['3-Hit Finisher', 'J J J  (triple tap)', 'Big knockback, pushes walls back'], ['Power Punch', 'Hold J, release', 'Charged heavy hit'],
-      ['Dash Strike', 'Shift + J  (or dash then J)', 'Lunge across the arena'], ['Down Slam', 'Jump, then J', 'Crash down from the air'],
-      ['PUMP Blast', 'K  (meter full)', 'Green energy beam, huge damage'], ['Dodge Roll', 'L  (+ direction)', 'Invincible roll through attacks'],
+      ['Move / Jump', 'A D / Arrows · W or Space', 'Walk. Jump. Touch no grass.'],
+      ['Punch · Uppercut · Finisher', 'J · J J · J J J', 'Tap, double tap (launches), triple tap'],
+      ['Power Punch', 'Hold J, release', 'Charge it like gas fees'],
+      ['Low Sweep', 'Down + J', 'Knocks it off its feet'],
+      ['Air Combo · Down Slam', 'J in air · Down + J in air', 'Up to 3 air hits, then crash down'],
+      ['Dash Strike', 'Shift, then J', 'Close distance, front-run the boss'],
+      ['Grab & Throw', 'U (up close)', 'Throw it into a wall for a bounce'],
+      ['Block · Parry', 'Hold I · tap I as it hits', 'Guard drains a meter. Perfect timing stuns and reflects'],
+      ['Dodge Roll', 'L (+ direction)', 'Invincible. Roll late for PERFECT DODGE slow-mo'],
+      ['PUMP Blast', 'K (meter full)', 'Big green energy'],
+      ['Hero Special', 'O (half meter)', 'HIM: Green Candle beam · HER: Short Squeeze flurry'],
+      ['Pause / Quit', 'Esc or P', 'Resume, restart, or rage quit'],
     ]
     rows.forEach((r, i) => {
-      const y = 120 + i * 46
-      this.add.text(140, y, r[0], { fontFamily: FONT, fontSize: '28px', color: '#7dffb0' })
-      this.add.text(450, y + 2, r[1], { fontFamily: 'Nunito', fontStyle: '800', fontSize: '24px', color: '#fff' })
-      this.add.text(820, y + 4, r[2], { fontFamily: 'Nunito', fontSize: '20px', color: '#cfe' })
+      const y = 82 + i * 42
+      this.add.text(70, y, r[0], { fontFamily: FONT, fontSize: '23px', color: '#7dffb0' })
+      this.add.text(430, y + 2, r[1], { fontFamily: 'Nunito', fontStyle: '800', fontSize: '20px', color: '#fff' })
+      this.add.text(760, y + 4, r[2], { fontFamily: 'Nunito', fontSize: '17px', color: '#dde' })
     })
-    this.add.text(W / 2, 590, 'THE TWIST: every boss watches your habits. Die, and it tells you what it LEARNED —\nthen comes back built to counter it. Change how you fight. Bear Szn uses everything.', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '21px', color: '#ffd9a0', align: 'center' }).setOrigin(0.5)
-    btn(this, W / 2, 670, 'BACK', () => this.scene.start('title'))
+    this.add.text(W / 2, 600, 'The catch: every boss is watching. Die, and it tells you exactly what it LEARNED, then\ncomes back built to punish it. Change your style or stay exit liquidity. Bear Szn uses everything.', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '19px', color: '#ffd9a0', align: 'center' }).setOrigin(0.5)
+    btn(this, W / 2, 672, 'GOT IT', () => this.scene.start('title'))
   }
 }
 
@@ -211,8 +283,9 @@ class Fight extends Phaser.Scene {
   init(d: any) { this.retry = !!d?.retry; (window as any).__fight = this }
   create() {
     this.B = BOSSES[run.boss]; const B = this.B
-    bg(this, B.tint[0], B.tint[1])
-    const fl = this.add.graphics(); fl.fillStyle(0x000000, 0.35).fillRect(0, FY, W, H - FY); fl.fillStyle(0xffffff, 0.08).fillRect(0, FY, W, 4)
+    const AK = run.arena === 'home' ? HOME[run.boss] : run.arena; this.arenaKey = AK
+    paintArena(this, AK); this.add.rectangle(W / 2, H / 2, W, H, B.tint[1], 0.12)
+    const fl = this.add.graphics(); fl.fillStyle(ARENAS.find(a => a.key === AK)!.floor, 1).fillRect(0, FY, W, H - FY); fl.fillStyle(0x000000, 0.25).fillRect(0, FY, W, H - FY); fl.fillStyle(0xffffff, 0.08).fillRect(0, FY, W, 4)
     this.fx = this.add.graphics()
     this.stats = newStats(); this.projs = []; this.hazards = []; this.freeze = 0; this.slow = 1; this.tapCount = 0; this.holdT = 0; this.stillT = 0
     this.walls = { l: 40, r: 1240 }; this.tiles = Array.from({ length: 12 }, () => ({ gone: 0, warn: 0 })); this.tileHeat = new Array(12).fill(0); this.tileT = 4
@@ -231,14 +304,28 @@ class Fight extends Phaser.Scene {
     this.info = this.add.text(W / 2, 80, 'Boss ' + (run.boss + 1) + '/4 · Deaths ' + run.deaths + ' · Habits caught ' + run.learned.length, { fontFamily: 'Nunito', fontStyle: '800', fontSize: '17px', color: '#ddd' }).setOrigin(0.5, 0).setDepth(51)
     // counters active this fight
     this.active = run.boss === 3 ? [...run.learned] : run.learned.slice(-3)
-    if (this.active.length) this.add.text(W / 2, 104, 'COUNTERS ARMED: ' + this.active.map(k => HABITS[k].line.replace(/^You /, '')).join(' · '), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '14px', color: '#ff9f9f', wordWrap: { width: 1000 }, align: 'center' }).setOrigin(0.5, 0).setDepth(51)
+    if (this.active.length) this.add.text(W / 2, 104, 'COUNTERS ARMED: ' + this.active.map(k => hl(k)).join(' · '), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '14px', color: '#ff9f9f', wordWrap: { width: 1000 }, align: 'center' }).setOrigin(0.5, 0).setDepth(51)
     this.readKeys = bindKeys(this)
     if (run.settings.touch && !DEMO) this.touchUI()
     const mute = this.add.text(W - 40, 54, audio.muted ? '🔇' : '🔊', { fontSize: '26px' }).setOrigin(1, 0).setDepth(52).setInteractive({ useHandCursor: true })
     mute.on('pointerdown', () => { setMuted(!audio.muted); mute.setText(audio.muted ? '🔇' : '🔊') })
     this.input.keyboard!.on('keydown-M', () => { setMuted(!audio.muted); mute.setText(audio.muted ? '🔇' : '🔊') })
-    this.input.keyboard!.on('keydown-ESC', () => { stopMusic(); this.scene.start('title') })
+    const pz = this.add.text(W / 2 + 120, 22, 'II', { fontFamily: FONT, fontSize: '30px', color: '#fff', backgroundColor: '#0007', padding: { x: 12, y: 2 } }).setDepth(52).setInteractive({ useHandCursor: true })
+    pz.on('pointerdown', () => this.pause())
     this.intro()
+  }
+  pause() {
+    if (this.phase !== 'fight' || DEMO) return
+    this.scene.pause(); stopMusic()
+    const resume = () => { overlay(''); document.removeEventListener('keydown', kd); this.scene.resume(); startMusic(true); for (const k in inp) (inp as any)[k] = false; Object.assign(prev, inp) }
+    const kd = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'p') resume() }
+    setTimeout(() => document.addEventListener('keydown', kd), 50)
+    overlay(`<h2>PAUSED</h2><p>Funds are frozen. Unlike the timer, which isn't.</p><button id="rs" style="width:100%">Resume</button><button id="rt" class="alt" style="width:100%">Restart fight</button><button id="qt" class="alt" style="width:100%">Quit to menu</button><div class="err" id="er"></div>`)
+    const $ = (i: string) => document.getElementById(i) as any
+    $('rs').onclick = resume
+    $('rt').onclick = () => { overlay(''); document.removeEventListener('keydown', kd); this.scene.resume(); this.scene.restart({ retry: true }) }
+    let sure = false
+    $('qt').onclick = () => { if (!sure) { sure = true; $('qt').textContent = 'Sure? Run progress is lost. Tap again'; return } overlay(''); document.removeEventListener('keydown', kd); this.scene.resume(); stopMusic(); this.scene.start('title') }
   }
   touchUI() {
     this.input.addPointer(3)
@@ -248,15 +335,16 @@ class Fight extends Phaser.Scene {
       c.on('pointerdown', () => { unlock(); touch[k] = true; c.setFillStyle(0xf5c84c, 0.5) })
       const up = () => { touch[k] = false; c.setFillStyle(0xffffff, 0.16) }; c.on('pointerup', up); c.on('pointerout', up)
     }
-    mk(90, 640, 52, '◀', 'left'); mk(220, 640, 52, '▶', 'right'); mk(155, 535, 44, '▲', 'jump')
-    mk(1180, 620, 62, 'HIT', 'atk'); mk(1060, 655, 44, 'ROLL', 'dodge'); mk(1075, 540, 44, 'DASH', 'dash'); mk(1190, 480, 48, 'PUMP', 'special')
+    mk(85, 625, 54, '◀', 'left'); mk(215, 625, 54, '▶', 'right'); mk(150, 520, 44, '▲', 'jump'); mk(150, 690, 30, '▼', 'down')
+    mk(1185, 610, 64, 'HIT', 'atk'); mk(1060, 660, 42, 'ROLL', 'dodge'); mk(1050, 555, 42, 'BLOCK', 'block'); mk(1110, 470, 40, 'GRAB', 'grab')
+    mk(1205, 470, 40, 'PUMP', 'special'); mk(1205, 375, 38, 'HERO', 'special2'); mk(1105, 375, 38, 'DASH', 'dash')
   }
   intro() {
     this.phase = 'intro'; const B = this.B
     const band = this.add.rectangle(W / 2, H / 2, W, 190, 0x000000, 0.75).setDepth(70)
     const n = this.add.text(-400, H / 2 - 30, B.name, { fontFamily: FONT, fontSize: '96px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 10 }).setOrigin(0.5).setDepth(71)
-    const s = this.add.text(W + 400, H / 2 + 50, (run.boss === 3 ? 'FINAL BOSS — ' : 'BOSS ' + (run.boss + 1) + ' — ') + B.sub, { fontFamily: 'Nunito', fontStyle: '800', fontSize: '26px', color: '#fff' }).setOrigin(0.5).setDepth(71)
-    if (this.retry) s.setText('ROUND 2 — it remembers you.')
+    const s = this.add.text(W + 400, H / 2 + 50, (run.boss === 3 ? 'FINAL BOSS — ' : 'BOSS ' + (run.boss + 1) + ' — ') + pick(BOSS_LINES[B.key].intro), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '26px', color: '#fff' }).setOrigin(0.5).setDepth(71)
+    if (this.retry) s.setText('ROUND 2 — ' + pick(BOSS_LINES[B.key].retry))
     this.tweens.add({ targets: n, x: W / 2, duration: 450, ease: 'Back.out' }); this.tweens.add({ targets: s, x: W / 2, duration: 450, delay: 150, ease: 'Back.out' })
     this.tweens.add({ targets: this.bImg, scale: this.bImg.scale * 1.12, yoyo: true, duration: 250, delay: 300 })
     sfx.warn(); startMusic(true)
@@ -280,11 +368,17 @@ class Fight extends Phaser.Scene {
     if (ad < 190 && this.demoAtkCd <= 0) { inp.atk = !prev.atk; if (released('atk') === false && !inp.atk && this.tapCount === 0 && this.p.st === 'attack' && this.p.move === 'finisher') this.demoAtkCd = 0.35 }
     if (ad < 160 && Math.random() < 0.004) inp.jump = true
     if (p.meter >= 100 && ad < 600) inp.special = true
+    if (this.retry || run.boss > 0) {
+      this.demoMv = (this.demoMv || 0) + dt
+      if (b.st === 'windup' && b.t < 0.12 && ad < 260 && !b.unb) { inp.block = true; inp.atk = false }
+      else if (this.demoMv > 1.1 && ad < 170) { this.demoMv = 0; const r = this.demoK = ((this.demoK || 0) + 1) % 4; if (r === 0) inp.grab = true; else if (r === 1) { inp.down = true; inp.atk = !prev.atk } else if (r === 2 && p.meter >= 50) inp.special2 = true; else if (r === 3) inp.jump = true }
+    }
     if (inp.dash && ad < 300) inp.atk = true
   }
   update(_t: number, dms: number) {
     let dt = Math.min(dms / 1000, 1 / 30)
     if (DEMO && this.phase === 'fight') this.demoInput(dt); else this.readKeys()
+    if (pressed('pause')) { Object.assign(prev, inp); this.pause(); return }
     if (this.phase !== 'fight' && this.phase !== 'ko') { Object.assign(prev, inp); this.draw(); return }
     if (this.freeze > 0) { this.freeze -= dt; Object.assign(prev, inp); return }
     dt *= this.slow
@@ -305,13 +399,17 @@ class Fight extends Phaser.Scene {
     if (Math.abs(p.x - this.lastPX) < 0.5 && p.ground && p.st === 'idle') { S.still += dt; this.stillT += dt } else this.stillT = 0
     if (p.hp < 35) { S.low += dt; if (Math.sign(p.x - this.lastPX) === -Math.sign(b.x - p.x) && Math.abs(p.x - this.lastPX) > 0.5) S.lowRetreat += dt }
     this.lastPX = p.x
-    if (p.st === 'hurt') { if (p.t > 0.32) p.st = 'idle' }
+    if (p.ground) this.airN = 0
+    if (p.st !== 'block') this.guard = Math.min(100, this.guard + 14 * dt)
+    if (p.st === 'hurt') { if (p.t > (p.stun || 0.32)) { p.st = 'idle'; p.stun = 0 } }
+    else if (p.st === 'block') { p.vx = 0; S.block += dt; if (!inp.block) p.st = 'idle' }
     else if (p.st === 'roll') { p.vx = p.rollDir * 620; if (p.t > 0.38) { p.st = 'idle'; p.vx = 0 } }
     else if (p.st === 'attack') {
       const m = MOVES[p.move]
       if (p.move === 'dash') p.vx = p.face * Math.max(0, 900 * (1 - p.t / m.dur))
       else if (p.move === 'slam') { p.vx = 0; if (p.ground) { if (p.t < 2) { this.shake(0.02, 180); this.burst(p.x + p.face * 40, FY, 14, 0xd8c8a0); this.tryHit(true) }; p.st = 'idle' } }
-      else p.vx *= 0.85
+      else if (p.move === 'squeeze') { p.vx = 0; if (p.t - this.sq > 0.09) { this.sq = p.t; p.hit = false } }
+      else if (p.move !== 'air') p.vx *= 0.85
       if (p.move !== 'slam' && p.t >= m.a0 && p.t <= m.a1) this.tryHit(false)
       if (p.move !== 'slam' && p.t > m.dur) p.st = 'idle'
     }
@@ -328,12 +426,17 @@ class Fight extends Phaser.Scene {
         if (this.active.includes(key) && b.st !== 'windup' && b.st !== 'swipe' && Math.random() < 0.85) this.bossAttack('read', p.x + p.rollDir * 230)
       }
       if (pressed('special') && p.meter >= 100) this.pump()
+      if (pressed('special2') && p.meter >= 50) this.heroSpecial()
+      if (inp.block && p.ground && p.st === 'idle') { if (!prev.block) this.blockT0 = this.time.now; p.st = 'block'; p.t = 0; return }
+      if (pressed('grab') && p.ground && p.st === 'idle') { this.grab(); return }
       // attack input
       if (pressed('atk')) { this.holdT = 0 }
       if (inp.atk) { this.holdT += dt; if (this.holdT > 0.22 && p.st === 'idle' && p.ground && p.dashT <= 0) { p.st = 'charge'; p.t = 0 } }
       if (released('atk')) {
         if (p.st === 'charge') { p.st = 'idle'; this.doMove(this.holdT > 0.55 ? 'heavy' : 'punch') }
-        else if (!p.ground) this.doMove('slam')
+        else if (!p.ground && inp.down) this.doMove('slam')
+        else if (!p.ground) { if (this.airN < 3) { this.airN++; this.doMove('air'); p.vy = Math.min(p.vy, -160) } }
+        else if (inp.down) this.doMove('sweep')
         else if (p.dashT > 0) { p.dashT = 0; this.doMove('dash') }
         else {
           const now = this.time.now
@@ -389,7 +492,8 @@ class Fight extends Phaser.Scene {
     b.hp = Math.max(0, b.hp - dmg); b.flash = 0.09; p.meter = Math.min(100, p.meter + meter)
     b.x += Math.sign(kb) * Math.min(80, Math.abs(kb) / 6); b.kb = kb * 0.6
     if (launch && run.boss !== 3) { b.vy = -launch; b.air = true } else if (launch) { b.vy = -launch * 0.5; b.air = true }
-    if (b.st === 'windup' && dmg >= 13) { b.st = 'stagger'; b.t = 0.5 }
+    if (this.p.move === 'sweep' && b.st !== 'windup') { b.st = 'stagger'; b.t = 0.75; this.num(b.x, b.y - this.B.h - 20, 'SWEPT', '#7dffb0', 30) }
+    else if (b.st === 'windup' && dmg >= 13) { b.st = 'stagger'; b.t = 0.5 }
     else if (b.st !== 'windup' && b.st !== 'swipe') { b.st = 'stagger'; b.t = 0.25 + dmg / 80 }
     this.freeze = dmg > 14 ? 0.11 : 0.055
     this.shake(dmg > 14 ? 0.018 : 0.008, dmg > 14 ? 200 : 100)
@@ -397,6 +501,37 @@ class Fight extends Phaser.Scene {
     this.burst(hx, b.y - this.B.h * 0.55, dmg > 14 ? 22 : 10, 0xffe066)
     this.num(hx, b.y - this.B.h * 0.7, '' + dmg, dmg > 14 ? '#ffd23f' : '#ffffff', dmg > 14 ? 46 : 34)
     if (b.hp <= 0) this.ko()
+  }
+  perfect() {
+    const p = this.p; p.iframe = 0.5; p.meter = Math.min(100, p.meter + 15); sfx.up()
+    this.num(p.x, p.y - p.h - 30, 'PERFECT DODGE', '#7dffb0', 38); this.slow = 0.35; this.cameras.main.flash(120, 120, 255, 180)
+    this.time.delayedCall(260, () => { if (this.phase === 'fight') this.slow = 1 })
+  }
+  parry() {
+    const p = this.p, b = this.boss; p.meter = Math.min(100, p.meter + 20); sfx.block(); sfx.up()
+    b.st = 'stagger'; b.t = 1.0; b.flash = 0.15; this.freeze = 0.14; this.slow = 0.4; this.shake(0.02, 200)
+    this.time.delayedCall(320, () => { if (this.phase === 'fight') this.slow = 1 })
+    this.num(p.x, p.y - p.h - 30, 'PARRY! SAFU', '#ffffff', 46); this.burst(p.x + p.face * 40, p.y - p.h / 2, 24, 0xffffff)
+    this.stats.moves['parry'] = (this.stats.moves['parry'] || 0) + 1; run.combos++
+  }
+  grab() {
+    const p = this.p, b = this.boss, S = this.stats; S.moves['grab'] = (S.moves['grab'] || 0) + 1; run.moveUse['grab'] = (run.moveUse['grab'] || 0) + 1
+    if (Math.abs(b.x - p.x) > 190 || b.air || b.st === 'windup') { sfx.whiff(); p.st = 'hurt'; p.t = 0.1; return }
+    if ((this.active.includes('grabby') || run.boss === 3) && Math.random() < 0.5) { this.num(b.x, b.y - this.B.h - 10, 'SLIPPED. IT KNEW.', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0; return }
+    run.combos++; const dir = -p.face
+    this.tweens.add({ targets: b, x: p.x + dir * 40, duration: 120, onComplete: () => { b.vy = -600; b.air = true; this.damageBoss(14, dir * 900, 0, 12, b.x); this.num(p.x, p.y - p.h - 30, 'THROW', '#7dffb0', 34) } })
+    p.face = dir; p.st = 'attack'; p.move = 'punch'; p.t = 0.2; p.hit = true
+  }
+  heroSpecial() {
+    const p = this.p; p.meter -= 50; run.combos++
+    const key = run.hero === 'heroF' ? 'squeeze' : 'beam'; this.stats.moves[key] = (this.stats.moves[key] || 0) + 1; run.moveUse[key] = (run.moveUse[key] || 0) + 1
+    if (key === 'squeeze') { this.num(p.x, p.y - p.h - 40, 'SHORT SQUEEZE!', '#ffd23f', 48); sfx.pump(); this.sq = 0; this.doMove('squeeze'); return }
+    this.num(p.x, p.y - p.h - 40, 'GREEN CANDLE!', '#5dff9a', 48); sfx.pump(); this.shake(0.015, 400)
+    const x0 = p.x + p.face * 50, len = p.face > 0 ? W - x0 : x0
+    const beam = this.add.rectangle(p.face > 0 ? x0 : 0, p.y - p.h * 0.55, len, 70, 0x2fbf71).setOrigin(0, 0.5).setDepth(30).setStrokeStyle(8, 0xd8ffe6)
+    this.tweens.add({ targets: beam, scaleY: 0.1, alpha: 0, duration: 650, onComplete: () => beam.destroy() })
+    for (let i = 0; i < 3; i++) this.time.delayedCall(i * 140, () => { const b = this.boss; if (this.phase === 'fight' && Math.sign(b.x - p.x) === p.face) this.damageBoss(9, p.face * 200, 0, 0, b.x - p.face * 40) })
+    p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true
   }
   pump() {
     const p = this.p; p.meter = 0; sfx.pump(); this.shake(0.012, 300); run.combos++
@@ -406,8 +541,17 @@ class Fight extends Phaser.Scene {
     this.num(p.x, p.y - p.h - 30, 'PUMP!', '#5dff9a', 56)
     p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true
   }
-  hurtPlayer(dmg: number, kx: number, force = false) {
-    const p = this.p; if (!force && (p.iframe > 0 || p.st === 'dead')) return false
+  hurtPlayer(dmg: number, kx: number, force = false, unblock = false): boolean | string {
+    const p = this.p
+    if (!force && p.st === 'roll' && p.t > 0.12 && this.slow === 1) { this.perfect(); return false }
+    if (!force && (p.iframe > 0 || p.st === 'dead')) return false
+    if (!force && p.st === 'block' && !unblock) {
+      if (this.time.now - this.blockT0 < 180) { this.parry(); return 'parry' }
+      this.guard -= dmg * 4; sfx.block(); this.burst(p.x + p.face * 30, p.y - p.h / 2, 6, 0x88ccff); p.vx = kx * 0.3; p.x += Math.sign(kx) * 20
+      if (this.guard <= 0) { this.guard = 0; p.st = 'hurt'; p.t = 0; p.stun = 0.9; this.num(p.x, p.y - p.h - 20, 'GUARD BROKEN', '#ffb347', 34); this.shake(0.015) }
+      else this.num(p.x, p.y - p.h - 10, 'BLOCKED', '#88ccff', 24)
+      return false
+    }
     p.hp = Math.max(0, p.hp - dmg); p.st = 'hurt'; p.t = 0; p.vx = kx; p.iframe = 0.5
     sfx.hurt(); this.shake(0.014, 160); this.freeze = 0.07; this.cameras.main.flash(80, 255, 60, 60)
     this.burst(p.x, p.y - p.h / 2, 12, 0xff6b6b); this.num(p.x, p.y - p.h - 10, '-' + dmg, '#ff6b6b', 34)
@@ -417,6 +561,8 @@ class Fight extends Phaser.Scene {
   // ---- boss ----
   bossAttack(kind: string, tx = 0) {
     const b = this.boss; b.st = 'windup'; b.atk = kind; b.tx = tx
+    b.unb = (kind === 'swipe' || kind === 'read') && (this.active.includes('turtle') || run.boss === 3) && Math.random() < 0.45
+    if (b.unb) this.num(b.x, FY - this.B.h - 30, 'UNBLOCKABLE', '#c38bff', 30)
     const fast = this.active.includes('noDodge') ? 0.75 : 1
     b.t = (kind === 'read' ? 0.38 : kind === 'swipe' ? 0.5 : kind === 'anti' ? 0.32 : kind === 'leap' ? 0.55 : kind === 'snipe' ? 0.8 : 0.5) * fast * (run.boss === 0 ? 0.85 : 1)
     if (kind === 'read') this.num(tx, FY - 260, 'READ YOU!', '#ff6b6b', 40)
@@ -428,7 +574,8 @@ class Fight extends Phaser.Scene {
     b.flash = Math.max(0, b.flash - dt); b.t -= dt; b.cd -= dt
     // physics
     if (b.air || b.y < FY) { b.vy += 2200 * dt; b.y += b.vy * dt; if (b.y >= FY) { b.y = FY; b.vy = 0; if (b.air) { this.shake(0.01, 100); this.burst(b.x, FY, 8, 0xd8c8a0) } b.air = false } }
-    if (b.kb) { b.x += b.kb * dt; b.kb *= 0.85; if (Math.abs(b.kb) < 5) b.kb = 0 }
+    if (b.kb) { b.x += b.kb * dt; b.kb *= 0.85; if (Math.abs(b.kb) < 5) b.kb = 0
+      if (Math.abs(b.kb) > 250 && (b.x < this.walls.l + 70 || b.x > this.walls.r - 70)) { b.kb = -b.kb * 0.5; b.hp = Math.max(1, b.hp - 6); this.num(b.x, b.y - this.B.h, 'WALL BOUNCE +6', '#ffd23f', 34); this.shake(0.02, 160); sfx.heavy(); this.burst(b.x, b.y - this.B.h / 2, 16, 0xffffff) } }
     b.x = Phaser.Math.Clamp(b.x, this.walls.l + 60, this.walls.r - 60)
     const d = p.x - b.x, ad = Math.abs(d)
     let speed = B.speed * (act('runLow') && p.hp < 35 ? 1.5 : 1)
@@ -470,7 +617,7 @@ class Fight extends Phaser.Scene {
       const range = a === 'read' ? 170 : 190
       const hitY = a === 'anti' ? p.y < FY - 20 || Math.abs(p.x - b.x) < 150 : p.y > FY - 230
       if (Math.abs(p.x - (a === 'read' ? b.tx : b.x + b.face * 80)) < range && hitY) {
-        if (this.hurtPlayer(a === 'read' ? 14 : 11, b.face * 420) && a === 'read') this.num(p.x, FY - 330, 'COUNTERED', '#ff4040', 40)
+        if (this.hurtPlayer(a === 'read' ? 14 : 11, b.face * 420, false, b.unb) === true && a === 'read') this.num(p.x, FY - 330, 'COUNTERED', '#ff4040', 40)
       }
       sfx.whiff()
     } else if (a === 'shoot') {
@@ -517,7 +664,7 @@ class Fight extends Phaser.Scene {
       if (q.big) this.emit.emitParticle(2, q.o.x, q.o.y)
       if (q.fromBoss) {
         const hy = q.o.y > p.y - p.h && q.o.y < p.y + 10
-        if (Math.abs(q.o.x - p.x) < 50 && hy && p.iframe <= 0) { this.hurtPlayer(q.dmg, Math.sign(q.vx) * 300); q.life = 0 }
+        if (Math.abs(q.o.x - p.x) < 50 && hy && p.iframe <= 0) { if (this.hurtPlayer(q.dmg, Math.sign(q.vx) * 300) === 'parry') { q.vx = -q.vx * 1.4; q.fromBoss = false; q.life = 1.5; q.dmg = 15 } else q.life = 0 }
       } else if (Math.abs(q.o.x - b.x) < this.B.h * 0.35 && this.phase === 'fight') { this.damageBoss(q.dmg, Math.sign(q.vx) * 500, 0, 0, q.o.x); this.pushWalls(120); q.life = 0 }
       if (q.life <= 0 || q.o.x < -100 || q.o.x > W + 100) { q.o.destroy(); return false }
       return true
@@ -544,6 +691,13 @@ class Fight extends Phaser.Scene {
     }
   }
   cornerT = 0
+  demoMv = 0
+  demoK = 0
+  arenaKey = ''
+  airN = 0
+  guard = 100
+  blockT0 = 0
+  sq = 0
   demoAtkCd = 0
   burst(x: number, y: number, n: number, tint: number) { this.emit.setParticleTint(tint); this.emit.explode(n, x, y) }
   // ---- ko / death ----
@@ -558,7 +712,7 @@ class Fight extends Phaser.Scene {
       this.mergeStats()
       const learned = analyze(this.stats); run.learned.push(...learned)
       if (run.boss === 3) { stopMusic(); this.time.delayedCall(600, () => this.scene.start('results')); return }
-      this.learnedCard(learned, this.B.name + ' DEFEATED', () => { run.boss++; this.scene.restart({ retry: false }) })
+      this.learnedCard(learned, pick(BOSS_LINES[this.B.key].win), () => { run.boss++; this.scene.restart({ retry: false }) })
     })
   }
   updBossKO(dt: number) { const b = this.boss; b.vy += 2200 * dt; b.y = Math.min(FY, b.y + b.vy * dt); b.x += b.kb * dt; b.kb *= 0.95 }
@@ -567,12 +721,13 @@ class Fight extends Phaser.Scene {
     const p = this.p; p.st = 'dead'; this.phase = 'dead'; run.deaths++; this.mergeStats()
     this.slow = 0.3; sfx.ko(); this.cameras.main.zoomTo(1.15, 300)
     this.tweens.add({ targets: this.pImg, angle: -p.face * 90, y: FY - 10, duration: 500 })
-    const t = this.add.text(W / 2, H / 2 - 60, 'LIQUIDATED', { fontFamily: FONT, fontSize: '110px', color: '#ff5b5b', stroke: '#000', strokeThickness: 12 }).setOrigin(0.5).setScrollFactor(0).setDepth(80)
+    const dsub = this.add.text(W / 2, H / 2 + 40, pick(DEATH_SUB), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '28px', color: '#fff', stroke: '#000', strokeThickness: 5 }).setOrigin(0.5).setScrollFactor(0).setDepth(80)
+    const t = this.add.text(W / 2, H / 2 - 60, pick(DEATH), { fontFamily: FONT, fontSize: '110px', color: '#ff5b5b', stroke: '#000', strokeThickness: 12 }).setOrigin(0.5).setScrollFactor(0).setDepth(80)
     this.tweens.add({ targets: t, scale: { from: 2, to: 1 }, duration: 300 })
     this.time.delayedCall(1300, () => {
-      this.cameras.main.zoomTo(1, 200); t.destroy()
+      this.cameras.main.zoomTo(1, 200); t.destroy(); dsub.destroy()
       const learned = analyze(this.stats); run.learned.push(...learned)
-      this.learnedCard(learned, 'YOU GOT LIQUIDATED', () => this.scene.restart({ retry: true }))
+      this.learnedCard(learned, 'IT WATCHED YOU LOSE. IT TOOK NOTES.', () => this.scene.restart({ retry: true }))
     })
   }
   learnedCard(learned: string[], head: string, next: () => void) {
@@ -584,7 +739,7 @@ class Fight extends Phaser.Scene {
     c.add([bgR, hd, big])
     this.tweens.add({ targets: big, x: { from: W / 2 - 8, to: W / 2 + 8 }, yoyo: true, repeat: 5, duration: 40 })
     const lines = learned.length ? learned : []
-    const msg = lines.length ? lines.map(k => '▸ ' + HABITS[k].line) : [run.learned.length ? '▸ Nothing new. It still remembers ' + run.learned.length + ' habit' + (run.learned.length > 1 ? 's' : '') + '.' : '▸ Not enough data yet… keep fighting.']
+    const msg = lines.length ? lines.map(k => '▸ ' + hl(k)) : [run.learned.length ? '▸ Nothing new. It still holds ' + run.learned.length + ' habit' + (run.learned.length > 1 ? 's' : '') + '.' : '▸ Not enough data yet. Keep feeding it.']
     msg.forEach((m, i) => {
       const t = this.add.text(W / 2, 310 + i * 90, '', { fontFamily: 'monospace', fontSize: '36px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5)
       const k = lines[i], cn = k ? this.add.text(W / 2, 352 + i * 90, '', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '22px', color: '#ffb0b0' }).setOrigin(0.5) : null
@@ -613,7 +768,7 @@ class Fight extends Phaser.Scene {
     // shadows
     f.fillStyle(0x000000, 0.35).fillEllipse(p.x, FY + 4, 120 * Math.max(0.4, 1 - (FY - p.y) / 500), 22).fillEllipse(b.x, FY + 6, B.h * 0.6 * Math.max(0.4, 1 - (FY - b.y) / 600), 28)
     // windup telegraph
-    if (b.st === 'windup' && this.phase === 'fight') { const a = 0.3 + 0.3 * Math.sin(tm * 40); f.fillStyle(0xff3030, a); if (b.atk === 'snipe') f.fillRect(Math.min(b.x, p.x), FY - 115, Math.abs(p.x - b.x), 6); else if (b.atk === 'read') f.fillEllipse(b.tx, FY, 260, 30); else f.fillEllipse(b.x + b.face * 100, FY, 300, 34) }
+    if (b.st === 'windup' && this.phase === 'fight') { const a = 0.3 + 0.3 * Math.sin(tm * 40); f.fillStyle(b.unb ? 0xb050ff : 0xff3030, a); if (b.atk === 'snipe') f.fillRect(Math.min(b.x, p.x), FY - 115, Math.abs(p.x - b.x), 6); else if (b.atk === 'read') f.fillEllipse(b.tx, FY, 260, 30); else f.fillEllipse(b.x + b.face * 100, FY, 300, 34) }
     // player sprite
     const pi = this.pImg, ps = p.h / pi.height
     let sx = 1, sy = 1, ang = 0
@@ -622,7 +777,7 @@ class Fight extends Phaser.Scene {
     if (p.st === 'charge') { const c = Math.min(1, this.holdT / 0.55); sx = 1 + c * 0.15; sy = 1 - c * 0.12; if (c >= 1 && Math.floor(tm * 20) % 2) pi.setTint(0xffe066); else pi.clearTint() }
     if (p.st === 'attack') { const m = MOVES[p.move], k = Math.min(1, p.t / m.dur); const pk = Math.sin(k * Math.PI); sx = 1 + pk * 0.18; sy = 1 - pk * 0.1; ang = p.face * pk * (p.move === 'uppercut' ? -14 : 10); if (p.move === 'slam') { sx = 1.2; sy = 0.85 } }
     if (p.st === 'roll') { ang = p.rollDir * (p.t / 0.38) * 360; sx = sy = 0.8 }
-    if (p.st === 'hurt') pi.setTintFill(0xff8080); else if (p.st !== 'charge') pi.clearTint()
+    if (p.st === 'block') { sx = 0.92; sy = 0.95; pi.setTint(0x99ccff) } else if (p.st === 'hurt') pi.setTintFill(0xff8080); else if (p.st !== 'charge' && p.st !== 'block') pi.clearTint()
     if (p.st !== 'dead') { pi.setPosition(p.x, p.y - (p.st === 'roll' ? 30 : 0)).setScale(ps * sx * (p.face < 0 ? -1 : 1), ps * sy).setFlipX(false).setAngle(ang).setOrigin(0.5, p.st === 'roll' ? 0.5 : 1); if (p.st === 'roll') pi.y = p.y - p.h * 0.4 }
     pi.setAlpha(p.iframe > 0 && p.st !== 'roll' && Math.floor(tm * 20) % 2 ? 0.5 : 1)
     // boss sprite
@@ -645,6 +800,7 @@ class Fight extends Phaser.Scene {
     bar(40, 48, 440, p.hp / 100, p.hp < 35 ? 0xff6b6b : 0x5dff9a)
     bar(W - 480, 48, 440, b.hp / b.max, 0xff5b5b, true)
     g.fillStyle(0x000000, 0.6).fillRoundedRect(36, 84, 228, 18, 8); g.fillStyle(p.meter >= 100 ? (Math.floor(tm * 8) % 2 ? 0x5dff9a : 0xd8ffe6) : 0x2fbf71).fillRoundedRect(40, 87, 220 * p.meter / 100, 12, 6)
+    g.fillStyle(0x000000, 0.6).fillRoundedRect(276, 84, 128, 18, 8); g.fillStyle(this.guard < 30 ? 0xffb347 : 0x88ccff).fillRoundedRect(280, 87, 120 * this.guard / 100, 12, 6)
     if (p.meter >= 100) { g.fillStyle(0x5dff9a, 0.2 + 0.15 * Math.sin(tm * 10)).fillCircle(p.x, p.y - p.h / 2, 90) }
     this.timerT.setText(fmt(run.time))
   }
@@ -654,7 +810,7 @@ function showBoard(back: () => void) {
   overlay('<h2>LEADERBOARD</h2><p>Loading…</p>')
   top().then(({ list, global }) => {
     overlay('<h2>LEADERBOARD</h2><div class="learned">' + (global ? 'Global · fastest full clear' : 'Offline · this device only') + '</div><ol>' +
-      (list.length ? list.map(s => '<li>' + esc(s.name) + ' <span>' + fmt(s.time_ms) + ' · ' + s.deaths + '💀</span></li>').join('') : '<li>No clears yet. Be first.</li>') +
+      (list.length ? list.map(s => '<li>' + esc(s.name) + ' <span>' + fmt(s.time_ms) + ' · ' + s.deaths + '💀</span></li>').join('') : '<li>No clears yet. Early is a state of mind.</li>') +
       '</ol><button id="bk" class="alt">Close</button>')
     document.getElementById('bk')!.onclick = () => { overlay(''); back() }
   })
@@ -667,17 +823,17 @@ class Results extends Phaser.Scene {
     bg(this, 0x1a2a1a, 0x3a5a2a)
     const im = this.add.image(W / 2 - 300, FY + 40, run.hero).setOrigin(0.5, 1).setScale(0.6)
     this.tweens.add({ targets: im, y: FY + 20, yoyo: true, repeat: -1, duration: 400, ease: 'Quad.out' })
-    this.add.text(W / 2, 80, 'BEAR SZN IS OVER', { fontFamily: FONT, fontSize: '80px', color: '#f5c84c', stroke: '#000', strokeThickness: 10 }).setOrigin(0.5)
+    this.add.text(W / 2, 80, 'BEAR SZN CANCELLED', { fontFamily: FONT, fontSize: '80px', color: '#f5c84c', stroke: '#000', strokeThickness: 10 }).setOrigin(0.5)
     sfx.win(); startMusic(false)
     const t = run.time, fav = Object.entries(run.moveUse).sort((a, b) => b[1] - a[1])[0]?.[0] || 'punch'
     const habits = run.learned.length
-    const shareText = `I beat Bear Szn in ${fmt(t)} on It Learns You — it caught ${habits} of my habits${run.learned[0] ? ' ("' + HABITS[run.learned[0]].line + '")' : ''}. Can you beat it without getting read?`
+    const shareText = `I beat Bear Szn in ${fmt(t)} on It Learns You — it caught ${habits} of my habits${run.learned[0] ? ' ("' + hl(run.learned[0]) + '")' : ''}. Can you beat it without getting read?`
     const html = `<h2>RUN COMPLETE</h2><div class="stats">
 <div class="stat">Time<b>${fmt(t)}</b></div><div class="stat">Deaths<b>${run.deaths}</b></div>
 <div class="stat">Habits caught<b>${habits}</b></div><div class="stat">Combos used<b>${run.combos}</b></div></div>
-<div class="learned">${run.learned.map(k => 'IT LEARNED: ' + HABITS[k].line).join('<br>') || 'It learned nothing. Ghost.'}</div>
+<div class="learned">${run.learned.map(k => 'IT LEARNED: ' + hl(k)).join('<br>') || 'It learned nothing. You are a ghost wallet.'}</div>
 <p style="margin:10px 0 4px">Favourite move: <b>${MOVES[fav]?.label || 'PUMP'}</b></p>
-<input id="nm" maxlength="20" placeholder="Your name or @X handle" value="${esc(localStorage.getItem('ily_name') || '')}">
+<p>Signed in as <b>@${esc(session.username)}</b></p>
 <div><button id="sb">Submit to leaderboard</button><button id="card" class="alt">Download share card</button><a class="btn" id="x" target="_blank" rel="noopener">Share on X</a></div>
 <div><button id="lb" class="alt">Leaderboard</button><button id="again" class="alt">Play again</button></div><div id="msg" class="learned"></div>`
     overlay(html)
@@ -685,11 +841,11 @@ class Results extends Phaser.Scene {
     const url = location.origin + location.pathname
     $('x').href = 'https://x.com/intent/post?text=' + encodeURIComponent(shareText + ' ' + url + ' @loadoutprotocol')
     $('sb').onclick = async () => {
-      const name = ($('nm').value || '').trim().replace(/[^A-Za-z0-9_ .@-]/g, '').slice(0, 20)
-      if (!name) { $('msg').textContent = 'Enter a name first.'; return }
-      localStorage.setItem('ily_name', name); $('sb').disabled = true
+      const name = session.username
+      if (!name) { $('msg').textContent = 'Log in first.'; return }
+      $('sb').disabled = true
       const ok = await submit({ name, hero: run.hero === 'heroF' ? 'F' : 'M', time_ms: Math.max(30000, Math.round(t)), deaths: Math.min(999, run.deaths), habits, combos: Math.min(100000, run.combos) })
-      $('msg').textContent = ok ? 'Saved to the global leaderboard!' : 'Saved locally (global board unreachable).'
+      $('msg').textContent = ok ? 'On the global board. Screenshot it before someone faster shows up.' : 'Saved on this device. The global board is having a moment.'
     }
     $('card').onclick = () => this.card(t, habits, fav)
     $('lb').onclick = () => showBoard(() => this.scene.restart())
@@ -705,16 +861,20 @@ class Results extends Phaser.Scene {
     x.fillStyle = '#f5c84c'; x.font = '72px "Lilita One", Impact'; x.fillText('IT LEARNS YOU', 420, 110)
     x.fillStyle = '#fff'; x.font = '52px "Lilita One", Impact'; x.fillText('Beat Bear Szn in ' + fmt(t), 420, 200)
     x.fillStyle = '#ff8f8f'; x.font = '36px "Lilita One", Impact'; x.fillText('It caught ' + habits + ' of my habits', 420, 260)
-    x.font = 'bold 26px monospace'; run.learned.slice(0, 4).forEach((k, i) => x.fillText('IT LEARNED: ' + HABITS[k].line, 420, 320 + i * 40))
+    x.font = 'bold 26px monospace'; run.learned.slice(0, 4).forEach((k, i) => x.fillText('IT LEARNED: ' + hl(k), 420, 320 + i * 40))
     x.fillStyle = '#7dffb0'; x.font = '30px "Lilita One", Impact'; x.fillText(run.deaths + ' deaths · ' + run.combos + ' combos · fav: ' + (MOVES[fav]?.label || 'PUMP'), 420, 520)
     x.fillStyle = '#ccc'; x.font = '24px Nunito, sans-serif'; x.fillText(location.host + location.pathname, 420, 580)
     const a = document.createElement('a'); a.download = 'it-learns-you.png'; a.href = c.toDataURL('image/png'); a.click()
   }
 }
 
-new Phaser.Game({
+(window as any).__game = new Phaser.Game({
   type: Phaser.AUTO, parent: 'game', width: W, height: H, backgroundColor: '#120f1c',
   scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-  scene: [Boot, Title, Select, HowTo, Settings, Fight, Results],
+  scene: [Boot, Title, Select, Arena, HowTo, Settings, Fight, Results],
 })
 ;(window as any).__run = run
+;['touchstart', 'pointerdown', 'keydown'].forEach(e => document.addEventListener(e, () => unlock(), { once: true, passive: true }))
+document.addEventListener('gesturestart', e => e.preventDefault())
+document.addEventListener('dblclick', e => e.preventDefault())
+document.addEventListener('touchmove', e => { if (!(e.target as HTMLElement).closest?.('#ov')) e.preventDefault() }, { passive: false })
