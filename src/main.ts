@@ -106,7 +106,7 @@ const STANDALONE = (navigator as any).standalone || matchMedia('(display-mode: s
 function fullScreen() {
   const el: any = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen
   if (fn && !IOS) { try { fn.call(el)?.then?.(() => (screen.orientation as any)?.lock?.('landscape').catch(() => {})).catch(() => {}) } catch {} return }
-  overlay(STANDALONE ? '<h2>YOU ARE FULL SCREEN</h2><p>Already running as an app. Enjoy.</p><button id="ok">Nice</button>' : '<h2>FULL SCREEN ON iPHONE</h2><p>Safari won\'t let websites hide its bars. Do this once:</p><ol><li>Tap <b>Share</b> (square with the arrow)</li><li>Tap <b>Add to Home Screen</b></li><li>Open <b>It Learns You</b> from your home screen</li></ol><p>It runs edge to edge like a real app. In Chrome on iPhone, use Safari for this step.</p><button id="ok">Got it</button>')
+  overlay(STANDALONE ? '<h2>YOU ARE FULL SCREEN</h2><p>Already running as an app. Enjoy.</p><button id="ok">Nice</button>' : '<h2>FULL SCREEN ON iPHONE</h2><p>Safari won\'t let websites hide its bars. Do this once:</p><ol><li>Tap <b>Share</b> (square with the arrow)</li><li>Tap <b>Add to Home Screen</b></li><li>Open <b>Fighting the Bears</b> from your home screen</li></ol><p>It runs edge to edge like a real app. In Chrome on iPhone, use Safari for this step.</p><button id="ok">Got it</button>')
   const b = document.getElementById('ok'); if (b) b.onclick = () => overlay('')
 }
 function goLandscape() {
@@ -192,7 +192,7 @@ class Title extends Phaser.Scene {
     const bear = this.add.image(W / 2, FY + 70, 'bear').setOrigin(0.5, 1).setScale(0.62).setAlpha(0.35).setTint(0x553344)
     this.tweens.add({ targets: [hero, her], scaleY: 0.57, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     this.tweens.add({ targets: bear, scale: 0.66, alpha: 0.5, duration: 2200, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-    const t = this.add.text(W / 2, 110, 'IT LEARNS YOU', { fontFamily: FONT, fontSize: '104px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 12 }).setOrigin(0.5)
+    const t = this.add.text(W / 2, 110, 'FIGHTING THE BEARS', { fontFamily: FONT, fontSize: '84px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 12 }).setOrigin(0.5)
     t.setShadow(0, 8, '#000', 12, true, true)
     this.tweens.add({ targets: t, y: 118, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     this.add.text(W / 2, 188, 'Beat 7 bosses. Each one learns how you play.', { fontFamily: 'Nunito', fontSize: '24px', color: '#fff', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
@@ -1064,7 +1064,7 @@ class Results extends Phaser.Scene {
     sfx.win(); startMusic(false)
     const t = run.time, fav = Object.entries(run.moveUse).sort((a, b) => b[1] - a[1])[0]?.[0] || 'punch'
     const habits = run.learned.length
-    const shareText = `I beat Bear Szn in ${fmt(t)} on It Learns You — it caught ${habits} of my habits${run.learned[0] ? ' ("' + hl(run.learned[0]) + '")' : ''}. Can you beat it without getting read?`
+    const shareText = `I beat Bear Szn in ${fmt(t)} on Fighting the Bears — it caught ${habits} of my habits${run.learned[0] ? ' ("' + hl(run.learned[0]) + '")' : ''}. Can you beat it without getting read?`
     const html = `<h2>YOU WIN!</h2><div class="stats">
 <div class="stat">Time<b>${fmt(t)}</b></div><div class="stat">Deaths<b>${run.deaths}</b></div>
 <div class="stat">Habits caught<b>${habits}</b></div><div class="stat">Combos used<b>${run.combos}</b></div></div>
@@ -1095,13 +1095,13 @@ class Results extends Phaser.Scene {
     const hi = src(run.hero), be = src('bear')
     x.globalAlpha = 0.35; x.drawImage(be, 760, 160, 420, 420 * be.height / be.width); x.globalAlpha = 1
     x.drawImage(hi, 40, 120, 380 * hi.width / hi.height, 380 + 100)
-    x.fillStyle = '#f5c84c'; x.font = '72px "Lilita One", Impact'; x.fillText('IT LEARNS YOU', 420, 110)
+    x.fillStyle = '#f5c84c'; x.font = '60px "Lilita One", Impact'; x.fillText('FIGHTING THE BEARS', 420, 110)
     x.fillStyle = '#fff'; x.font = '52px "Lilita One", Impact'; x.fillText('Beat Bear Szn in ' + fmt(t), 420, 200)
     x.fillStyle = '#ff8f8f'; x.font = '36px "Lilita One", Impact'; x.fillText('It caught ' + habits + ' of my habits', 420, 260)
     x.font = 'bold 26px monospace'; run.learned.slice(0, 4).forEach((k, i) => x.fillText('IT LEARNED: ' + hl(k), 420, 320 + i * 40))
     x.fillStyle = '#7dffb0'; x.font = '30px "Lilita One", Impact'; x.fillText(run.deaths + ' deaths · ' + run.combos + ' combos · fav: ' + (MOVES[fav]?.label || 'FLYING KICK'), 420, 520)
     x.fillStyle = '#ccc'; x.font = '24px Nunito, sans-serif'; x.fillText(location.host + location.pathname, 420, 580)
-    const a = document.createElement('a'); a.download = 'it-learns-you.png'; a.href = c.toDataURL('image/png'); a.click()
+    const a = document.createElement('a'); a.download = 'fighting-the-bears.png'; a.href = c.toDataURL('image/png'); a.click()
   }
 }
 

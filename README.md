@@ -1,4 +1,4 @@
-# It Learns You
+# Fighting the Bears
 A crypto boss-rush fighter where every boss studies how you play — then counters your habits.
 Stop Loss → Exit Liquidity → Rug Pull → **Bear Szn**. Free, in-browser "learning" (no API): it tracks dodge direction, position, favourite combo, jump rate, standing still and low-HP behaviour, tells you what it LEARNED, and arms counters.
 
