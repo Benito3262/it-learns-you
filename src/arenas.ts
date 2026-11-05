@@ -1,9 +1,9 @@
 import Phaser from 'phaser'
 export const ARENAS = [
-  { key: 'floor', name: 'Trading Floor', sub: 'night shift, all screens red', floor: 0x1d1a26 },
-  { key: 'roof', name: 'Rooftop', sub: 'above a city that never logs off', floor: 0x23202e },
-  { key: 'vault', name: 'Neon Exchange Vault', sub: 'cold storage, hot tempers', floor: 0x0e1424 },
-  { key: 'desert', name: 'Desert of Dead Coins', sub: 'where tokens go to die', floor: 0x5a3a22 },
+  { key: 'floor', name: 'Trading Floor', sub: 'city office at night', floor: 0x1d1a26 },
+  { key: 'roof', name: 'Rooftop', sub: 'high above the city', floor: 0x23202e },
+  { key: 'vault', name: 'Neon Vault', sub: 'glowing steel vault', floor: 0x0e1424 },
+  { key: 'desert', name: 'Desert', sub: 'hot sand and old ruins', floor: 0x5a3a22 },
 ]
 export const HOME = ['floor', 'roof', 'vault', 'desert', 'roof', 'floor', 'desert']
 let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647

@@ -18,9 +18,9 @@ const BOSSES = [
   { key: 'bear', name: 'BEAR SZN', sub: 'Remembers everything. Uses all of it.', hp: 420, speed: 200, h: 330, flip: false, tint: [0x1a1410, 0x5a3420], native: 'all' },
 ]
 const BK = () => BOSSES[run.boss].key, FINAL = () => run.boss === BOSSES.length - 1, TILES = () => BK() === 'rugpull' || FINAL()
-const PERKS: Record<string, [string, string]> = { diamond: ['Diamond Hands', 'Take 25% less damage'], leverage: ['10x Leverage', 'Deal 25% more damage'], bot: ['MEV Bot Reflexes', 'Longer dodges, easier perfect dodges'], staking: ['Staking Rewards', 'Regenerate 2 HP every second'], whale: ['Whale Meter', 'Meter fills 50% faster'], wash: ['Wash Trading', 'Combo timer lasts twice as long'], front: ['Front-runner', 'Every 10-hit combo heals 12 HP'] }
+const PERKS: Record<string, [string, string]> = { diamond: ['Armor', 'Take 25% less damage'], leverage: ['Power', 'Deal 25% more damage'], bot: ['Quick Reflexes', 'Longer dodges, easier perfect dodges'], staking: ['Regen', 'Regenerate 2 HP every second'], whale: ['Energy', 'Special meter fills 50% faster'], wash: ['Combo Time', 'Combo timer lasts twice as long'], front: ['Lifesteal', 'Every 10-hit combo heals 12 HP'] }
 const perk = (k: string) => run.perks.includes(k)
-const RANKS: [number, string, string][] = [[30, "SSS · SATOSHI'S ALT", '#ff5bf0'], [22, 'S · SATOSHI MODE', '#ffd23f'], [15, 'A · ALPHA LEAK', '#7dffb0'], [10, 'B · BASED', '#5bc8ff'], [6, 'C · COPIUM', '#ddd'], [3, 'D · DEGEN', '#aaa']]
+const RANKS: [number, string, string][] = [[30, 'PERFECT!', '#ff5bf0'], [22, 'INSANE!', '#ffd23f'], [15, 'AWESOME!', '#7dffb0'], [10, 'GREAT!', '#5bc8ff'], [6, 'GOOD', '#ddd'], [3, 'NICE', '#aaa']]
 const MOVES: Record<string, { dmg: number; range: number; dur: number; a0: number; a1: number; kb: number; label: string; launch?: number; meter: number }> = {
   punch: { dmg: 6, range: 125, dur: 0.24, a0: 0.06, a1: 0.13, kb: 90, label: 'PUNCH', meter: 6 },
   uppercut: { dmg: 9, range: 120, dur: 0.34, a0: 0.07, a1: 0.16, kb: 60, launch: 720, label: 'UPPERCUT', meter: 9 },
@@ -29,8 +29,8 @@ const MOVES: Record<string, { dmg: number; range: number; dur: number; a0: numbe
   dash: { dmg: 13, range: 150, dur: 0.32, a0: 0.02, a1: 0.2, kb: 300, label: 'DASH STRIKE', meter: 10 },
   sweep: { dmg: 8, range: 150, dur: 0.34, a0: 0.06, a1: 0.18, kb: 60, label: 'LOW SWEEP', meter: 9 },
   air: { dmg: 7, range: 120, dur: 0.22, a0: 0.04, a1: 0.14, kb: 80, label: 'AIR COMBO', meter: 7 },
-  squeeze: { dmg: 3, range: 130, dur: 0.9, a0: 0.05, a1: 0.85, kb: 20, label: 'SHORT SQUEEZE', meter: 0 },
-  moon: { dmg: 22, range: 170, dur: 0.5, a0: 0.08, a1: 0.4, kb: 650, label: 'SEND IT KICK', meter: 0 },
+  squeeze: { dmg: 3, range: 130, dur: 0.9, a0: 0.05, a1: 0.85, kb: 20, label: 'FLURRY', meter: 0 },
+  moon: { dmg: 22, range: 170, dur: 0.5, a0: 0.08, a1: 0.4, kb: 650, label: 'FLYING KICK', meter: 0 },
   slam: { dmg: 16, range: 130, dur: 0.4, a0: 0.0, a1: 0.4, kb: 200, label: 'DOWN SLAM', meter: 10 },
 }
 const hl = (k: string) => run.lines[k] || (run.lines[k] = pick(HABITS[k]?.lines || ['You have a habit. It has notes.']))
@@ -106,7 +106,7 @@ const STANDALONE = (navigator as any).standalone || matchMedia('(display-mode: s
 function fullScreen() {
   const el: any = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen
   if (fn && !IOS) { try { fn.call(el)?.then?.(() => (screen.orientation as any)?.lock?.('landscape').catch(() => {})).catch(() => {}) } catch {} return }
-  overlay(STANDALONE ? '<h2>YOU ARE FULL SCREEN</h2><p>Already running as an app. Peak degen efficiency.</p><button id="ok">Nice</button>' : '<h2>FULL SCREEN ON iPHONE</h2><p>Safari won\'t let websites hide its bars. Do this once:</p><ol><li>Tap <b>Share</b> (square with the arrow)</li><li>Tap <b>Add to Home Screen</b></li><li>Open <b>It Learns You</b> from your home screen</li></ol><p>It runs edge to edge like a real app. In Chrome on iPhone, use Safari for this step.</p><button id="ok">Got it</button>')
+  overlay(STANDALONE ? '<h2>YOU ARE FULL SCREEN</h2><p>Already running as an app. Enjoy.</p><button id="ok">Nice</button>' : '<h2>FULL SCREEN ON iPHONE</h2><p>Safari won\'t let websites hide its bars. Do this once:</p><ol><li>Tap <b>Share</b> (square with the arrow)</li><li>Tap <b>Add to Home Screen</b></li><li>Open <b>It Learns You</b> from your home screen</li></ol><p>It runs edge to edge like a real app. In Chrome on iPhone, use Safari for this step.</p><button id="ok">Got it</button>')
   const b = document.getElementById('ok'); if (b) b.onclick = () => overlay('')
 }
 function goLandscape() {
@@ -116,17 +116,17 @@ function goLandscape() {
 function authScreen(done: () => void) {
   let mode = localStorage.getItem('ily_sess') ? 'in' : 'up'
   const needProfile = () => {
-    overlay(`<h2>CLAIM YOUR HANDLE</h2><p>One handle per wallet. It goes on the leaderboard, so choose wisely.</p>
+    overlay(`<h2>CHOOSE A NAME</h2><p>It shows on the leaderboard.</p>
 <label>Username or X handle</label><input id="hn" maxlength="20" placeholder="e.g. trextxxy" value="${esc(localStorage.getItem('ily_pending') || '')}">
 <label>Main fighter</label><div class="row"><button id="hm" class="alt">HIM</button><button id="hf" class="alt">HER</button></div>
-<button id="go" style="width:100%">Lock it in</button><div class="err" id="er"></div>`)
+<button id="go" style="width:100%">Continue</button><div class="err" id="er"></div>`)
     let hero = 'M'; const $ = (i: string) => document.getElementById(i) as any
     const hi = () => { $('hm').className = hero === 'M' ? '' : 'alt'; $('hf').className = hero === 'F' ? '' : 'alt' }; hi()
     $('hm').onclick = () => { hero = 'M'; hi() }; $('hf').onclick = () => { hero = 'F'; hi() }
     $('go').onclick = async () => { const u = $('hn').value.trim().replace(/^@/, ''); $('er').textContent = ''; try { await createProfile(u, hero); done() } catch (e: any) { $('er').textContent = e.message } }
   }
   const draw = () => {
-    overlay(`<h2>${mode === 'up' ? 'REGISTER TO FIGHT' : 'WELCOME BACK'}</h2><p>${mode === 'up' ? 'The bosses need to know who they are studying.' : 'They remember you. Log in.'}</p>
+    overlay(`<h2>${mode === 'up' ? 'SIGN UP' : 'WELCOME BACK'}</h2><p>${mode === 'up' ? 'Create an account to save your scores.' : 'Log in to play.'}</p>
 <label>Email</label><input id="em" type="email" autocomplete="email" placeholder="you@domain.com">
 <label>Password</label><input id="pw" type="password" autocomplete="${mode === 'up' ? 'new-password' : 'current-password'}" placeholder="8+ characters">
 ${mode === 'up' ? '<label>Username or X handle</label><input id="hn" maxlength="20" placeholder="e.g. trextxxy">' : ''}
@@ -195,10 +195,10 @@ class Title extends Phaser.Scene {
     const t = this.add.text(W / 2, 110, 'IT LEARNS YOU', { fontFamily: FONT, fontSize: '104px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 12 }).setOrigin(0.5)
     t.setShadow(0, 8, '#000', 12, true, true)
     this.tweens.add({ targets: t, y: 118, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-    this.add.text(W / 2, 188, 'Four bosses. One dataset. The dataset is you.', { fontFamily: 'Nunito', fontSize: '24px', color: '#fff', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
-    this.add.text(W / 2, 222, 'gm, @' + (session.username || 'anon'), { fontFamily: 'Nunito', fontSize: '18px', color: '#7dffb0', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
-    btn(this, W / 2, 290, 'APE IN', () => { goLandscape(); this.scene.start('select') })
-    btn(this, W / 2, 365, 'READ THE DOCS', () => this.scene.start('howto'))
+    this.add.text(W / 2, 188, 'Beat 7 bosses. Each one learns how you play.', { fontFamily: 'Nunito', fontSize: '24px', color: '#fff', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    this.add.text(W / 2, 222, 'Player: ' + (session.username || 'Guest'), { fontFamily: 'Nunito', fontSize: '18px', color: '#7dffb0', fontStyle: '800', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    btn(this, W / 2, 290, 'PLAY', () => { goLandscape(); this.scene.start('select') })
+    btn(this, W / 2, 365, 'HOW TO PLAY', () => this.scene.start('howto'))
     btn(this, W / 2, 440, 'LEADERBOARD', () => showBoard(() => this.scene.restart()))
     btn(this, W / 2, 515, 'SETTINGS', () => this.scene.start('settings'))
     this.add.text(20, H - 20, BUILD, { fontFamily: 'monospace', fontSize: '16px', color: '#aaa' }).setOrigin(0, 1)
@@ -219,9 +219,9 @@ class Select extends Phaser.Scene {
   create() {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this, 0x16233a, 0x2f5a6a)
-    this.add.text(W / 2, 60, 'PICK YOUR WALLET', { fontFamily: FONT, fontSize: '60px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
+    this.add.text(W / 2, 60, 'CHOOSE YOUR FIGHTER', { fontFamily: FONT, fontSize: '60px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
     const pick_ = (k: string) => { run.hero = k; this.scene.start('arena') }
-    ;([['heroM', 380, 'HIM', 'Special: GREEN CANDLE beam'], ['heroF', 900, 'HER', 'Special: SHORT SQUEEZE flurry']] as const).forEach(([k, x, n, sp]) => {
+    ;([['heroM', 380, 'HIM', 'Special: Power Pillar'], ['heroF', 900, 'HER', 'Special: Punch Flurry']] as const).forEach(([k, x, n, sp]) => {
       const g = this.add.graphics(); g.fillStyle(0xffffff, 0.08).fillRoundedRect(x - 190, 110, 380, 470, 30)
       const im = this.add.image(x, 540, k).setOrigin(0.5, 1).setScale(0.64).setInteractive({ useHandCursor: true })
       this.tweens.add({ targets: im, scaleY: 0.66, duration: 800 + x / 3, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
@@ -237,7 +237,7 @@ class Arena extends Phaser.Scene {
   create() {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this, 0x1e1834, 0x3a2a5a)
-    this.add.text(W / 2, 50, 'CHOOSE YOUR CHART', { fontFamily: FONT, fontSize: '56px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
+    this.add.text(W / 2, 50, 'CHOOSE A STAGE', { fontFamily: FONT, fontSize: '56px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
     const go = (a: string) => { run.arena = a; run.start = performance.now(); run.deaths = 0; run.learned = []; run.lines = {}; run.combos = 0; run.moveUse = {}; run.boss = 0; run.perks = []; run.bestCombo = 0; run.debug = Q.has('boss'); if (run.debug) run.boss = Math.min(BOSSES.length - 1, +Q.get('boss')!); run.total = newStats(); this.scene.start('fight') }
     ARENAS.forEach((a, i) => {
       const x = 180 + (i % 2) * 460 + 160, y = 140 + Math.floor(i / 2) * 230
@@ -250,7 +250,7 @@ class Arena extends Phaser.Scene {
       im.on('pointerover', () => im.setTint(0xfff2c0)); im.on('pointerout', () => im.clearTint())
       im.on('pointerdown', () => { sfx.ui(); go(a.key) })
     })
-    btn(this, 1110, 330, 'HOME TURF', () => go('home'), 260)
+    btn(this, 1110, 330, 'ALL STAGES', () => go('home'), 260)
     this.add.text(1110, 380, 'each boss fights\nin its own arena', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '15px', color: '#cfe', align: 'center' }).setOrigin(0.5, 0)
   }
 }
@@ -260,21 +260,20 @@ class HowTo extends Phaser.Scene {
   create() {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     paintArena(this, 'floor'); this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.6)
-    this.add.text(W / 2, 36, 'THE DOCS (nobody reads these. You did. Bullish.)', { fontFamily: FONT, fontSize: '34px', color: '#f5c84c', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5)
+    this.add.text(W / 2, 36, 'HOW TO PLAY', { fontFamily: FONT, fontSize: '34px', color: '#f5c84c', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5)
     const rows = [
-      ['Move / Jump', 'A D / Arrows · W or Space', 'Walk. Jump. Touch no grass.'],
-      ['Punch · Uppercut · Finisher', 'J · J J · J J J', 'Tap, double tap (launches), triple tap'],
-      ['Power Punch', 'Hold J, release', 'Charge it like gas fees'],
-      ['Low Sweep', 'Down + J', 'Knocks it off its feet'],
+      ['Move / Jump', 'A D / Arrows · W, Space or ▲', 'Walk left/right and jump'],
+      ['Punch · Uppercut · Finisher', 'J or PUNCH · x2 · x3', 'Tap, double tap (launches), triple tap'],
+      ['Power Punch', 'Hold J, release', 'Hold to charge, release to hit'],
+      ['Low Sweep', 'Down (▼) + Punch', 'Knocks it off its feet'],
       ['Air Combo · Down Slam', 'J in air · Down + J in air', 'Up to 3 air hits, then crash down'],
-      ['Dash Strike', 'Shift, then J', 'Close distance, front-run the boss'],
-      ['Grab & Throw', 'U (up close)', 'Throw it into a wall for a bounce'],
-      ['Block · Parry', 'Hold I · tap I as it hits', 'Guard drains a meter. Perfect timing stuns and reflects'],
-      ['Dodge Roll', 'L (+ direction)', 'Invincible. Roll late for PERFECT DODGE slow-mo'],
-      ['Dodge', 'Q / E or DODGE', 'Quick invincible sidestep. Time it as a hit lands: slow-mo + counter'],
-      ['Send It Kick', 'K (40 meter)', 'Flying kick. Camera goes in, boss goes out'],
-      ['Hero Special', 'O (half meter)', 'HIM: Green Candle eruption · HER: Short Squeeze flurry'],
-      ['Pause / Quit', 'Esc or P', 'Resume, restart, or rage quit'],
+      ['Dash Strike', 'Shift, then J (keyboard)', 'Rush in and hit'],
+      ['Grab & Throw', 'U or GRAB (up close)', 'Throw it into a wall for a bounce'],
+      ['Block · Parry', 'Hold I or BLOCK · tap as it hits', 'Blocking drains guard. Perfect timing stuns'],
+            ['Dodge', 'Q / E or DODGE · L roll', 'Invincible sidestep. Dodge just as a hit lands for slow-mo + counter'],
+      ['Flying Kick', 'K or KICK (40 meter)', 'Big flying kick'],
+      ['Special', 'O or SPECIAL (half meter)', 'HIM: Power Pillar · HER: Punch Flurry'],
+      ['Pause / Quit', 'Esc, P or II', 'Resume, restart, or quit'],
     ]
     rows.forEach((r, i) => {
       const y = 76 + i * 40
@@ -282,7 +281,7 @@ class HowTo extends Phaser.Scene {
       this.add.text(430, y + 2, r[1], { fontFamily: 'Nunito', fontStyle: '800', fontSize: '20px', color: '#fff' })
       this.add.text(760, y + 4, r[2], { fontFamily: 'Nunito', fontSize: '17px', color: '#dde' })
     })
-    this.add.text(W / 2, 600, 'The catch: every boss is watching. Die, and it tells you exactly what it LEARNED, then\ncomes back built to punish it. Change your style or stay exit liquidity. Bear Szn uses everything.', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '19px', color: '#ffd9a0', align: 'center' }).setOrigin(0.5)
+    this.add.text(W / 2, 600, 'The catch: every boss is watching. Die, and it tells you exactly what it LEARNED, then\ncomes back built to punish it. Change your style to win. The final boss uses everything.', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '19px', color: '#ffd9a0', align: 'center' }).setOrigin(0.5)
     btn(this, W / 2, 672, 'GOT IT', () => this.scene.start('title'))
   }
 }
@@ -375,7 +374,7 @@ class Fight extends Phaser.Scene {
     const resume = () => { overlay(''); document.removeEventListener('keydown', kd); this.scene.resume(); startMusic(true); for (const k in inp) (inp as any)[k] = false; Object.assign(prev, inp) }
     const kd = (e: KeyboardEvent) => { if (e.key === 'Escape' || e.key === 'p') resume() }
     setTimeout(() => document.addEventListener('keydown', kd), 50)
-    overlay(`<h2>PAUSED</h2><p>Funds are frozen. Unlike the timer, which isn't.</p><button id="rs" style="width:100%">Resume</button><button id="rt" class="alt" style="width:100%">Restart fight</button><button id="qt" class="alt" style="width:100%">Quit to menu</button><div class="err" id="er"></div>`)
+    overlay(`<h2>PAUSED</h2><p>Game paused.</p><button id="rs" style="width:100%">Resume</button><button id="rt" class="alt" style="width:100%">Restart fight</button><button id="qt" class="alt" style="width:100%">Quit to menu</button><div class="err" id="er"></div>`)
     const $ = (i: string) => document.getElementById(i) as any
     $('rs').onclick = resume
     $('rt').onclick = () => { overlay(''); document.removeEventListener('keydown', kd); this.scene.resume(); this.scene.restart({ retry: true }) }
@@ -391,9 +390,9 @@ class Fight extends Phaser.Scene {
       this.add.text(x, y, label, { fontFamily: FONT, fontSize: r > 50 ? '24px' : '18px', color: '#fff' }).setOrigin(0.5).setDepth(61).setAlpha(0.85)
       btns.push({ x, y, r, k, c })
     }
-    mk(L + 85, 625, 58, '◀', 'left'); mk(L + 215, 625, 58, '▶', 'right'); mk(L + 150, 515, 46, '▲', 'jump'); mk(L + 150, 695, 32, '▼', 'down')
-    mk(R + 1185, 610, 64, 'HIT', 'atk'); mk(R + 1060, 660, 42, 'ROLL', 'dodge'); mk(R + 1050, 555, 42, 'BLOCK', 'block'); mk(R + 1110, 470, 40, 'GRAB', 'grab')
-    mk(R + 1205, 470, 40, 'SEND IT', 'special'); mk(R + 995, 455, 42, 'DODGE', 'evade'); mk(R + 1205, 375, 38, 'HERO', 'special2'); mk(R + 1105, 375, 38, 'DASH', 'dash')
+    mk(L + 85, 625, 58, '◀', 'left'); mk(L + 215, 625, 58, '▶', 'right'); mk(L + 150, 515, 46, 'JUMP', 'jump'); mk(L + 150, 695, 32, '▼', 'down')
+    mk(R + 1185, 610, 64, 'PUNCH', 'atk'); mk(R + 1060, 660, 42, 'DODGE', 'evade'); mk(R + 1050, 555, 42, 'BLOCK', 'block'); mk(R + 1110, 470, 40, 'GRAB', 'grab')
+    mk(R + 1205, 470, 40, 'KICK', 'special'); mk(R + 1205, 375, 38, 'SPECIAL', 'special2')
     // Native multi-touch: each finger owns one button; quick taps are latched so they never get lost between frames
     const own = new Map<number, string>(), canvas = this.game.canvas
     const hit = (cx: number, cy: number) => {
@@ -543,7 +542,7 @@ class Fight extends Phaser.Scene {
   }
   shakeLand() { this.burst(this.p.x, FY, 10, 0xd8c8a0); this.landT = 0.16; this.shake(0.005, 70) }
   tileUnder(x: number) { if (!TILES()) return false; const i = Math.floor((x - 40) / 100); return i >= 0 && i < 12 && this.tiles[i].gone > 0 }
-  fall() { const p = this.p; this.hurtPlayer(12, 0, true); p.x = (this.walls.l + this.walls.r) / 2; p.y = FY - 300; p.vy = 0; p.iframe = 1.2; this.num(p.x, FY - 330, 'RUGGED!', '#ff6b6b', 44) }
+  fall() { const p = this.p; this.hurtPlayer(12, 0, true); p.x = (this.walls.l + this.walls.r) / 2; p.y = FY - 300; p.vy = 0; p.iframe = 1.2; this.num(p.x, FY - 330, 'FELL!', '#ff6b6b', 44) }
   doMove(m: string) {
     const p = this.p; p.st = 'attack'; p.move = m; p.t = 0; p.hit = false
     this.stats.moves[m] = (this.stats.moves[m] || 0) + 1; run.moveUse[m] = (run.moveUse[m] || 0) + 1
@@ -559,7 +558,7 @@ class Fight extends Phaser.Scene {
       p.hit = true
       const counterKey = 'spam_' + p.move
       if (this.active.includes(counterKey) && Math.random() < 0.6 && b.st !== 'stagger') {
-        sfx.block(); this.num(b.x, b.y - this.B.h - 10, 'BLOCKED — IT KNOWS', '#ff8f8f', 30); this.burst(cx, p.y - p.h / 2, 8, 0x88ccff); this.freeze = 0.06; p.vx = -p.face * 300
+        sfx.block(); this.num(b.x, b.y - this.B.h - 10, 'BLOCKED', '#ff8f8f', 30); this.burst(cx, p.y - p.h / 2, 8, 0x88ccff); this.freeze = 0.06; p.vx = -p.face * 300
         b.blocked++; return
       }
       this.damageBoss(m.dmg, m.kb * p.face, m.launch || 0, m.meter, cx)
@@ -571,8 +570,8 @@ class Fight extends Phaser.Scene {
     if (perk('leverage')) dmg = Math.round(dmg * 1.25)
     if (this.counterT > 0) { dmg = Math.round(dmg * 1.5); this.counterT = 0; this.num(hx, b.y - this.B.h - 40, 'COUNTER x1.5', '#7dffb0', 34) }
     this.combo++; this.comboT = perk('wash') ? 3.2 : 1.6; run.bestCombo = Math.max(run.bestCombo, this.combo)
-    if (perk('front') && this.combo % 10 === 0) { p.hp = Math.min(100, p.hp + 12); this.num(p.x, p.y - p.h - 40, '+12 FRONT-RUN', '#7dffb0', 30) }
-    if (p.move === 'finisher' && this.combo >= 5) { dmg += 8; this.num(hx, b.y - this.B.h - 80, 'REKT FINISHER', '#ff5bf0', 54); this.slow = 0.3; this.time.delayedCall(320, () => { if (this.phase === 'fight') this.slow = 1 }) }
+    if (perk('front') && this.combo % 10 === 0) { p.hp = Math.min(100, p.hp + 12); this.num(p.x, p.y - p.h - 40, '+12 HP', '#7dffb0', 30) }
+    if (p.move === 'finisher' && this.combo >= 5) { dmg += 8; this.num(hx, b.y - this.B.h - 80, 'FINISHER!', '#ff5bf0', 54); this.slow = 0.3; this.time.delayedCall(320, () => { if (this.phase === 'fight') this.slow = 1 }) }
     if (perk('whale')) meter *= 1.5
     b.hp = Math.max(0, b.hp - dmg); b.flash = 0.09; p.meter = Math.min(100, p.meter + meter)
     b.x += Math.sign(kb) * Math.min(80, Math.abs(kb) / 6); b.kb = kb * 0.6
@@ -582,7 +581,7 @@ class Fight extends Phaser.Scene {
     else if (b.st !== 'windup' && b.st !== 'swipe') { b.st = 'stagger'; b.t = 0.25 + dmg / 80 }
     this.freeze = dmg > 14 ? 0.11 : 0.055
     if (dmg >= 14 && this.phase === 'fight') { const c = this.cameras.main; c.zoomTo(1.1, 70); this.time.delayedCall(170, () => { if (this.phase === 'fight') c.zoomTo(1, 200) }) }
-    if (!b.enraged && b.hp > 0 && b.hp < b.max / 2) { b.enraged = true; b.cd = 0.9; this.num(b.x, b.y - this.B.h - 60, 'ENRAGED · PHASE 2', '#ff4040', 48); this.cameras.main.flash(220, 255, 30, 30); this.shake(0.02, 300); sfx.warn() }
+    if (!b.enraged && b.hp > 0 && b.hp < b.max / 2) { b.enraged = true; b.cd = 0.9; this.num(b.x, b.y - this.B.h - 60, 'BOSS ANGRY!', '#ff4040', 48); this.cameras.main.flash(220, 255, 30, 30); this.shake(0.02, 300); sfx.warn() }
     this.shake(dmg > 14 ? 0.018 : 0.008, dmg > 14 ? 200 : 100)
     if (dmg > 14) sfx.heavy(); else sfx.punch()
     this.burst(hx, b.y - this.B.h * 0.55, dmg > 14 ? 22 : 10, 0xffe066)
@@ -598,13 +597,13 @@ class Fight extends Phaser.Scene {
     const p = this.p, b = this.boss; p.meter = Math.min(100, p.meter + 20); sfx.block(); sfx.up()
     b.st = 'stagger'; b.t = 1.0; b.flash = 0.15; this.freeze = 0.14; this.slow = 0.4; this.shake(0.02, 200)
     this.time.delayedCall(320, () => { if (this.phase === 'fight') this.slow = 1 })
-    this.num(p.x, p.y - p.h - 30, 'PARRY! SAFU', '#ffffff', 46); this.burst(p.x + p.face * 40, p.y - p.h / 2, 24, 0xffffff)
+    this.num(p.x, p.y - p.h - 30, 'PARRY!', '#ffffff', 46); this.burst(p.x + p.face * 40, p.y - p.h / 2, 24, 0xffffff)
     this.stats.moves['parry'] = (this.stats.moves['parry'] || 0) + 1; run.combos++
   }
   grab() {
     const p = this.p, b = this.boss, S = this.stats; S.moves['grab'] = (S.moves['grab'] || 0) + 1; run.moveUse['grab'] = (run.moveUse['grab'] || 0) + 1
     if (Math.abs(b.x - p.x) > 190 || b.air || b.st === 'windup') { sfx.whiff(); p.st = 'hurt'; p.t = 0.1; return }
-    if ((this.active.includes('grabby') || FINAL()) && Math.random() < 0.5) { this.num(b.x, b.y - this.B.h - 10, 'SLIPPED. IT KNEW.', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0; return }
+    if ((this.active.includes('grabby') || FINAL()) && Math.random() < 0.5) { this.num(b.x, b.y - this.B.h - 10, 'ESCAPED!', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0; return }
     run.combos++; const dir = -p.face
     this.tweens.add({ targets: b, x: p.x + dir * 40, duration: 120, onComplete: () => { b.vy = -600; b.air = true; this.damageBoss(14, dir * 900, 0, 12, b.x); this.num(p.x, p.y - p.h - 30, 'THROW', '#7dffb0', 34) } })
     p.face = dir; p.st = 'attack'; p.move = 'punch'; p.t = 0.2; p.hit = true
@@ -612,8 +611,8 @@ class Fight extends Phaser.Scene {
   heroSpecial() {
     const p = this.p; p.meter -= 50; run.combos++
     const key = run.hero === 'heroF' ? 'squeeze' : 'beam'; this.stats.moves[key] = (this.stats.moves[key] || 0) + 1; run.moveUse[key] = (run.moveUse[key] || 0) + 1
-    if (key === 'squeeze') { this.num(p.x, p.y - p.h - 40, 'SHORT SQUEEZE!', '#ffd23f', 48); sfx.pump(); this.sq = 0; this.doMove('squeeze'); return }
-    this.num(p.x, p.y - p.h - 40, 'GREEN CANDLE!', '#5dff9a', 48); sfx.pump(); this.shake(0.015, 400)
+    if (key === 'squeeze') { this.num(p.x, p.y - p.h - 40, 'PUNCH FLURRY!', '#ffd23f', 48); sfx.pump(); this.sq = 0; this.doMove('squeeze'); return }
+    this.num(p.x, p.y - p.h - 40, 'POWER PILLAR!', '#5dff9a', 48); sfx.pump(); this.shake(0.015, 400)
     const x0 = Phaser.Math.Clamp(p.x + p.face * 170, 60, W - 60)
     const pil = this.add.rectangle(x0, FY, 150, 460, 0x2fbf71).setOrigin(0.5, 1).setDepth(30).setStrokeStyle(8, 0xd8ffe6).setScale(1, 0.05)
     const wick = this.add.rectangle(x0, FY - 460, 10, 90, 0x2fbf71).setOrigin(0.5, 1).setDepth(30).setAlpha(0)
@@ -623,7 +622,7 @@ class Fight extends Phaser.Scene {
     p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true
   }
   sendIt() {
-    const p = this.p; p.meter -= 40; run.combos++; sfx.pump(); this.num(p.x, p.y - p.h - 30, 'SEND IT!', '#ffd23f', 52)
+    const p = this.p; p.meter -= 40; run.combos++; sfx.pump(); this.num(p.x, p.y - p.h - 30, 'FLYING KICK!', '#ffd23f', 52)
     p.vy = -420; p.ground = false; this.doMove('moon'); this.cameras.main.zoomTo(1.06, 120)
   }
   ghost(img: Phaser.GameObjects.Image, key: string, col = 0x7dffb0) {
@@ -656,7 +655,7 @@ class Fight extends Phaser.Scene {
   perkPick(next: () => void) {
     const pool = Object.keys(PERKS).filter(k => !perk(k)).sort(() => Math.random() - 0.5).slice(0, 3)
     if (!pool.length || DEMO) { next(); return }
-    overlay(`<h2>PICK A PERK</h2><p>Bull market bonus. Choose one. It stacks for the whole run.</p>${pool.map(k => `<button id="pk_${k}" style="width:100%;text-align:left"><b>${PERKS[k][0]}</b> — ${PERKS[k][1]}</button>`).join('')}`)
+    overlay(`<h2>PICK A PERK</h2><p>Choose one. It lasts the whole run.</p>${pool.map(k => `<button id="pk_${k}" style="width:100%;text-align:left"><b>${PERKS[k][0]}</b> — ${PERKS[k][1]}</button>`).join('')}`)
     pool.forEach(k => { (document.getElementById('pk_' + k) as HTMLElement).onclick = () => { run.perks.push(k); overlay(''); sfx.up(); next() } })
   }
   hurtPlayer(dmg: number, kx: number, force = false, unblock = false): boolean | string {
@@ -686,9 +685,9 @@ class Fight extends Phaser.Scene {
     const fast = this.active.includes('noDodge') ? 0.75 : 1
     const WT: any = { read: 0.38, swipe: 0.5, anti: 0.32, leap: 0.55, snipe: 0.8, lob: 0.55, charge: 0.7, fud: 0.6, blink: 0.4, laser: 0.75, candles: 0.5 }
     b.t = (WT[kind] ?? 0.5) * fast * (b.enraged ? 0.88 : 1) * (BK() === 'stoploss' ? 0.85 : 1)
-    if (kind === 'read') this.num(tx, FY - 260, 'READ YOU!', '#ff6b6b', 40)
+    if (kind === 'read') this.num(tx, FY - 260, 'COUNTER!', '#ff6b6b', 40)
     if (kind === 'snipe') this.num(this.p.x, FY - 280, 'STOP!', '#ff4040', 40)
-    const TL: any = { lob: 'PRIORITY FEE!', charge: 'GAS SPIKE!', fud: 'FUD INCOMING', blink: 'SOURCES?', laser: 'LIQ PRICE: YOU', candles: 'RED CANDLES!' }
+    const TL: any = { lob: 'INCOMING!', charge: 'CHARGE!', fud: 'CLOUDS!', blink: 'BEHIND YOU!', laser: 'LASER!', candles: 'WATCH ABOVE!' }
     if (TL[kind]) this.num(kind === 'laser' ? tx : b.x, FY - this.B.h - 70, TL[kind], '#ffb347', 36)
     sfx.warn()
   }
@@ -821,7 +820,7 @@ class Fight extends Phaser.Scene {
       this.pickT -= dt
       if (this.pickT <= 0 && !this.pickup) { this.pickT = 12; const x = 120 + Math.random() * (W - 240); const o = this.add.container(x, FY - 500, [this.add.rectangle(0, 0, 34, 70, 0x2fbf71).setStrokeStyle(4, 0xd8ffe6), this.add.rectangle(0, -50, 6, 30, 0x2fbf71)]).setDepth(28); this.pickup = { o, life: 7 }; this.tweens.add({ targets: o, y: FY - 40, duration: 600, ease: 'Bounce.out' }); this.num(x, FY - 200, 'GREEN CANDLE DROP', '#7dffb0', 26) }
       if (this.pickup) { const k = this.pickup; k.life -= dt; k.o.angle = Math.sin(this.time.now / 150) * 8
-        if (Math.abs(k.o.x - p.x) < 60 && p.y > FY - 220 && k.o.y > FY - 200) { p.hp = Math.min(100, p.hp + 15); p.meter = Math.min(100, p.meter + 20); this.num(p.x, p.y - p.h - 40, '+15 HP · WAGMI', '#7dffb0', 32); sfx.up(); k.life = 0 }
+        if (Math.abs(k.o.x - p.x) < 60 && p.y > FY - 220 && k.o.y > FY - 200) { p.hp = Math.min(100, p.hp + 15); p.meter = Math.min(100, p.meter + 20); this.num(p.x, p.y - p.h - 40, '+15 HP', '#7dffb0', 32); sfx.up(); k.life = 0 }
         if (k.life <= 0) { k.o.destroy(); this.pickup = null } }
     }
     if (this.phase !== 'fight') return
@@ -829,7 +828,7 @@ class Fight extends Phaser.Scene {
     if (BK() === 'exitliq' || (FINAL() && this.active.some(k => k.startsWith('camp')))) {
       const rate = BK() === 'exitliq' ? 14 : 6
       this.walls.l = Math.min(330, this.walls.l + rate * dt); this.walls.r = Math.max(950, this.walls.r - rate * dt)
-      if (p.x < this.walls.l + 45 || p.x > this.walls.r - 45) { this.cornerT = (this.cornerT || 0) + dt; if (this.cornerT > 2) { this.cornerT = 0; this.hurtPlayer(7, (p.x < W / 2 ? 1 : -1) * 500); this.num(p.x, FY - 260, 'NO EXIT', '#b38bff', 36) } } else this.cornerT = 0
+      if (p.x < this.walls.l + 45 || p.x > this.walls.r - 45) { this.cornerT = (this.cornerT || 0) + dt; if (this.cornerT > 2) { this.cornerT = 0; this.hurtPlayer(7, (p.x < W / 2 ? 1 : -1) * 500); this.num(p.x, FY - 260, 'WALL!', '#b38bff', 36) } } else this.cornerT = 0
     }
     if (BK() === 'rugpull' || (FINAL() && this.tiles)) {
       for (const t of this.tiles) { if (t.warn > 0) { t.warn -= dt; if (t.warn <= 0) t.gone = BK() === 'rugpull' ? 3.2 : 2.4 } else if (t.gone > 0) t.gone -= dt }
@@ -879,7 +878,7 @@ class Fight extends Phaser.Scene {
     this.time.delayedCall(1300, () => {
       this.cameras.main.zoomTo(1, 200); t.destroy(); dsub.destroy()
       const learned = analyze(this.stats); run.learned.push(...learned)
-      this.learnedCard(learned, 'IT WATCHED YOU LOSE. IT TOOK NOTES.', () => this.scene.restart({ retry: true }))
+      this.learnedCard(learned, 'GAME OVER', () => this.scene.restart({ retry: true }))
     })
   }
   learnedCard(learned: string[], head: string, next: () => void) {
@@ -887,19 +886,19 @@ class Fight extends Phaser.Scene {
     const c = this.add.container(0, 0).setDepth(90).setScrollFactor(0)
     const bgR = this.add.rectangle(W / 2, H / 2, W, H, 0x07050f, 0.86)
     const hd = this.add.text(W / 2, 110, head, { fontFamily: FONT, fontSize: '40px', color: '#ddd' }).setOrigin(0.5)
-    const big = this.add.text(W / 2, 200, 'IT LEARNED', { fontFamily: FONT, fontSize: '96px', color: '#ff5b5b', stroke: '#2a0000', strokeThickness: 10 }).setOrigin(0.5)
+    const big = this.add.text(W / 2, 200, 'IT LEARNED:', { fontFamily: FONT, fontSize: '96px', color: '#ff5b5b', stroke: '#2a0000', strokeThickness: 10 }).setOrigin(0.5)
     c.add([bgR, hd, big])
     this.tweens.add({ targets: big, x: { from: W / 2 - 8, to: W / 2 + 8 }, yoyo: true, repeat: 5, duration: 40 })
     const lines = learned.length ? learned : []
-    const msg = lines.length ? lines.map(k => '▸ ' + hl(k)) : [run.learned.length ? '▸ Nothing new. It still holds ' + run.learned.length + ' habit' + (run.learned.length > 1 ? 's' : '') + '.' : '▸ Not enough data yet. Keep feeding it.']
+    const msg = lines.length ? lines.map(k => '▸ ' + hl(k)) : [run.learned.length ? '▸ Nothing new. It still holds ' + run.learned.length + ' habit' + (run.learned.length > 1 ? 's' : '') + '.' : '▸ Nothing yet.']
     msg.forEach((m, i) => {
       const t = this.add.text(W / 2, 310 + i * 90, '', { fontFamily: 'monospace', fontSize: '36px', color: '#fff', fontStyle: 'bold' }).setOrigin(0.5)
       const k = lines[i], cn = k ? this.add.text(W / 2, 352 + i * 90, '', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '22px', color: '#ffb0b0' }).setOrigin(0.5) : null
       c.add(t); if (cn) c.add(cn)
       let n = 0; this.time.addEvent({ delay: 28, repeat: m.length, startAt: 0, callback: () => { t.setText(m.slice(0, ++n)); if (n % 2) sfx.learn() }, timeScale: 1 })
-      if (cn) this.time.delayedCall(m.length * 28 + 200, () => cn.setText('COUNTER ARMED → ' + HABITS[k].counter))
+      if (cn) this.time.delayedCall(m.length * 28 + 200, () => cn.setText('New counter: ' + HABITS[k].counter))
     })
-    const nx = this.add.text(W / 2, 640, 'press ATTACK / tap to continue', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '24px', color: '#f5c84c' }).setOrigin(0.5).setAlpha(0)
+    const nx = this.add.text(W / 2, 640, 'Tap to retry', { fontFamily: 'Nunito', fontStyle: '800', fontSize: '24px', color: '#f5c84c' }).setOrigin(0.5).setAlpha(0)
     c.add(nx); this.tweens.add({ targets: nx, alpha: 1, delay: 1200, duration: 300, yoyo: true, repeat: -1, hold: 500 })
     let done = false
     const go = () => { if (done) return; done = true; next() }
@@ -1039,16 +1038,16 @@ class Results extends Phaser.Scene {
     bg(this, 0x1a2a1a, 0x3a5a2a)
     const im = this.add.image(W / 2 - 300, FY + 40, run.hero).setOrigin(0.5, 1).setScale(0.6)
     this.tweens.add({ targets: im, y: FY + 20, yoyo: true, repeat: -1, duration: 400, ease: 'Quad.out' })
-    this.add.text(W / 2, 80, 'BEAR SZN CANCELLED', { fontFamily: FONT, fontSize: '80px', color: '#f5c84c', stroke: '#000', strokeThickness: 10 }).setOrigin(0.5)
+    this.add.text(W / 2, 80, 'YOU WIN!', { fontFamily: FONT, fontSize: '80px', color: '#f5c84c', stroke: '#000', strokeThickness: 10 }).setOrigin(0.5)
     sfx.win(); startMusic(false)
     const t = run.time, fav = Object.entries(run.moveUse).sort((a, b) => b[1] - a[1])[0]?.[0] || 'punch'
     const habits = run.learned.length
     const shareText = `I beat Bear Szn in ${fmt(t)} on It Learns You — it caught ${habits} of my habits${run.learned[0] ? ' ("' + hl(run.learned[0]) + '")' : ''}. Can you beat it without getting read?`
-    const html = `<h2>RUN COMPLETE</h2><div class="stats">
+    const html = `<h2>YOU WIN!</h2><div class="stats">
 <div class="stat">Time<b>${fmt(t)}</b></div><div class="stat">Deaths<b>${run.deaths}</b></div>
 <div class="stat">Habits caught<b>${habits}</b></div><div class="stat">Combos used<b>${run.combos}</b></div></div>
-<div class="learned">${run.learned.map(k => 'IT LEARNED: ' + hl(k)).join('<br>') || 'It learned nothing. You are a ghost wallet.'}</div>
-<p style="margin:10px 0 4px">Favourite move: <b>${MOVES[fav]?.label || 'SEND IT'}</b></p>
+<div class="learned">${run.learned.map(k => 'IT LEARNED: ' + hl(k)).join('<br>') || 'It learned nothing about you.'}</div>
+<p style="margin:10px 0 4px">Favourite move: <b>${MOVES[fav]?.label || 'FLYING KICK'}</b></p>
 <p>Signed in as <b>@${esc(session.username)}</b></p>
 <div><button id="sb">Submit to leaderboard</button><button id="card" class="alt">Download share card</button><a class="btn" id="x" target="_blank" rel="noopener">Share on X</a></div>
 <div><button id="lb" class="alt">Leaderboard</button><button id="again" class="alt">Play again</button></div><div id="msg" class="learned"></div>`
@@ -1078,7 +1077,7 @@ class Results extends Phaser.Scene {
     x.fillStyle = '#fff'; x.font = '52px "Lilita One", Impact'; x.fillText('Beat Bear Szn in ' + fmt(t), 420, 200)
     x.fillStyle = '#ff8f8f'; x.font = '36px "Lilita One", Impact'; x.fillText('It caught ' + habits + ' of my habits', 420, 260)
     x.font = 'bold 26px monospace'; run.learned.slice(0, 4).forEach((k, i) => x.fillText('IT LEARNED: ' + hl(k), 420, 320 + i * 40))
-    x.fillStyle = '#7dffb0'; x.font = '30px "Lilita One", Impact'; x.fillText(run.deaths + ' deaths · ' + run.combos + ' combos · fav: ' + (MOVES[fav]?.label || 'SEND IT'), 420, 520)
+    x.fillStyle = '#7dffb0'; x.font = '30px "Lilita One", Impact'; x.fillText(run.deaths + ' deaths · ' + run.combos + ' combos · fav: ' + (MOVES[fav]?.label || 'FLYING KICK'), 420, 520)
     x.fillStyle = '#ccc'; x.font = '24px Nunito, sans-serif'; x.fillText(location.host + location.pathname, 420, 580)
     const a = document.createElement('a'); a.download = 'it-learns-you.png'; a.href = c.toDataURL('image/png'); a.click()
   }
