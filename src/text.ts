@@ -22,8 +22,11 @@ export const HABITS: Record<string, { lines: string[]; counter: string }> = {
 }
 export const BOSS_LINES: Record<string, { intro: string[]; retry: string[]; win: string[] }> = {
   stoploss: { intro: ['Stand still and I close your position.', 'I trigger at the worst possible price. Yours.'], retry: ['Back already? Your entry was terrible.', 'Same setup, same exit. Mine.'], win: ['Stop Loss triggered. On him.', 'You moved. He did not see that coming.'] },
+  gasfee: { intro: ['That punch will cost you 400 gwei. Up front.', 'Every move you make, I take a cut.'], retry: ['Failed transaction. Fee still charged.', 'Back again? That retry costs extra.'], win: ['Gas Fee Goblin got gas-limited.', 'Fees: zero. Goblin: also zero.'] },
   exitliq: { intro: ['Every corner you run to, I am already there.', 'Someone has to be left holding. It is you.'], retry: ['The walls remember you.', 'More liquidity just arrived. It was yours.'], win: ['Exit Liquidity has left the arena.', 'You found the exit. He was the liquidity.'] },
+  fud: { intro: ['Heard you are going to lose. Source: me.', 'I do not fight. I spread rumours until you fall.'], retry: ['Told everyone you lost. Was right.', 'Breaking: you, again, losing.'], win: ['FUD Spreader got ratioed.', 'Community note added: he was wrong.'] },
   rugpull: { intro: ['Nice floor you are standing on. Shame about it.', 'Trust the team. I am the team.'], retry: ['Devs are doing something. It is me.', 'I already sold your favourite tile.'], win: ['Rug Pull got rugged.', "The floor held. His didn't."] },
+  liquidation: { intro: ['I know your liquidation price. I drew a laser on it.', 'One wick. That is all it takes.'], retry: ['Cascade continues. Margin not found.', 'You got wicked out. Classic.'], win: ['Cascade halted. Circuit breaker: you.', 'Liquidation Cascade got liquidated.'] },
   bear: { intro: ['I have read every habit you showed them. All of them.', 'Bull runs end. I do not.'], retry: ['Still here? Most people capitulate by now.', 'Your chart, your habits, my lunch.'], win: ['Bear Szn is cancelled.', 'Bear market over. Touch grass, champion.'] },
 }
 export const DEATH = ['LIQUIDATED', 'REKT', 'NGMI (YET)', 'MARGIN CALLED', 'FUNDS ARE NOT SAFU', 'PAPER HANDED']

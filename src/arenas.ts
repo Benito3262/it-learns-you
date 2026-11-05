@@ -5,7 +5,7 @@ export const ARENAS = [
   { key: 'vault', name: 'Neon Exchange Vault', sub: 'cold storage, hot tempers', floor: 0x0e1424 },
   { key: 'desert', name: 'Desert of Dead Coins', sub: 'where tokens go to die', floor: 0x5a3a22 },
 ]
-export const HOME = ['floor', 'vault', 'roof', 'desert']
+export const HOME = ['floor', 'roof', 'vault', 'desert', 'roof', 'floor', 'desert']
 let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
 export function paintArena(s: Phaser.Scene, key: string, W = 1280, H = 720, FY = 612) {
   seed = 7; const g = s.add.graphics(); const anim: Phaser.GameObjects.GameObject[] = []

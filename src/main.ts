@@ -10,10 +10,17 @@ const DEMO = Q.has('demo')
 const FONT = '"Lilita One", Impact, sans-serif'
 const BOSSES = [
   { key: 'stoploss', name: 'STOP LOSS', sub: 'Twitchy. Punishes standing still.', hp: 220, speed: 250, h: 270, flip: true, tint: [0x3a1620, 0x7a2a2a], native: 'still' },
+  { key: 'gasfee', name: 'GAS FEE GOBLIN', sub: 'Charges you for every move. Then charges at you.', hp: 240, speed: 240, h: 255, flip: false, tint: [0x14261a, 0x3f7a2a], native: 'gas' },
   { key: 'exitliq', name: 'EXIT LIQUIDITY', sub: 'The walls close in. Punishes corner campers.', hp: 260, speed: 130, h: 290, flip: false, tint: [0x1c1638, 0x4a2f7a], native: 'walls' },
+  { key: 'fud', name: 'FUD SPREADER', sub: 'Blinks behind you. Sources: trust me bro.', hp: 260, speed: 170, h: 285, flip: true, tint: [0x1a1a1f, 0x4a4a55], native: 'fud' },
   { key: 'rugpull', name: 'RUG PULL', sub: 'Pulls the floor where you stand most.', hp: 260, speed: 190, h: 280, flip: true, tint: [0x231a33, 0x6b3f6e], native: 'tiles' },
+  { key: 'liquidation', name: 'LIQUIDATION CASCADE', sub: 'Lasers at your liq price. Candles from the sky.', hp: 300, speed: 180, h: 300, flip: false, tint: [0x2a0a0a, 0x8a1a1a], native: 'lasers' },
   { key: 'bear', name: 'BEAR SZN', sub: 'Remembers everything. Uses all of it.', hp: 420, speed: 200, h: 330, flip: false, tint: [0x1a1410, 0x5a3420], native: 'all' },
 ]
+const BK = () => BOSSES[run.boss].key, FINAL = () => run.boss === BOSSES.length - 1, TILES = () => BK() === 'rugpull' || FINAL()
+const PERKS: Record<string, [string, string]> = { diamond: ['Diamond Hands', 'Take 25% less damage'], leverage: ['10x Leverage', 'Deal 25% more damage'], bot: ['MEV Bot Reflexes', 'Longer dodges, easier perfect dodges'], staking: ['Staking Rewards', 'Regenerate 2 HP every second'], whale: ['Whale Meter', 'Meter fills 50% faster'], wash: ['Wash Trading', 'Combo timer lasts twice as long'], front: ['Front-runner', 'Every 10-hit combo heals 12 HP'] }
+const perk = (k: string) => run.perks.includes(k)
+const RANKS: [number, string, string][] = [[30, "SSS · SATOSHI'S ALT", '#ff5bf0'], [22, 'S · SATOSHI MODE', '#ffd23f'], [15, 'A · ALPHA LEAK', '#7dffb0'], [10, 'B · BASED', '#5bc8ff'], [6, 'C · COPIUM', '#ddd'], [3, 'D · DEGEN', '#aaa']]
 const MOVES: Record<string, { dmg: number; range: number; dur: number; a0: number; a1: number; kb: number; label: string; launch?: number; meter: number }> = {
   punch: { dmg: 6, range: 125, dur: 0.24, a0: 0.06, a1: 0.13, kb: 90, label: 'PUNCH', meter: 6 },
   uppercut: { dmg: 9, range: 120, dur: 0.34, a0: 0.07, a1: 0.16, kb: 60, launch: 720, label: 'UPPERCUT', meter: 9 },
@@ -23,6 +30,7 @@ const MOVES: Record<string, { dmg: number; range: number; dur: number; a0: numbe
   sweep: { dmg: 8, range: 150, dur: 0.34, a0: 0.06, a1: 0.18, kb: 60, label: 'LOW SWEEP', meter: 9 },
   air: { dmg: 7, range: 120, dur: 0.22, a0: 0.04, a1: 0.14, kb: 80, label: 'AIR COMBO', meter: 7 },
   squeeze: { dmg: 3, range: 130, dur: 0.9, a0: 0.05, a1: 0.85, kb: 20, label: 'SHORT SQUEEZE', meter: 0 },
+  moon: { dmg: 22, range: 170, dur: 0.5, a0: 0.08, a1: 0.4, kb: 650, label: 'SEND IT KICK', meter: 0 },
   slam: { dmg: 16, range: 130, dur: 0.4, a0: 0.0, a1: 0.4, kb: 200, label: 'DOWN SLAM', meter: 10 },
 }
 const hl = (k: string) => run.lines[k] || (run.lines[k] = pick(HABITS[k]?.lines || ['You have a habit. It has notes.']))
@@ -30,7 +38,7 @@ const hl = (k: string) => run.lines[k] || (run.lines[k] = pick(HABITS[k]?.lines 
 // ---------- run state ----------
 type Stats = { block: number; rolls: [number, number]; heat: number[]; still: number; t: number; jumps: number; moves: Record<string, number>; low: number; lowRetreat: number }
 const newStats = (): Stats => ({ block: 0, rolls: [0, 0], heat: [0, 0, 0], still: 0, t: 0, jumps: 0, moves: {}, low: 0, lowRetreat: 0 })
-const run = { arena: 'home', lines: {} as Record<string, string>, hero: 'heroM', start: 0, time: 0, deaths: 0, learned: [] as string[], combos: 0, moveUse: {} as Record<string, number>, boss: 0, total: newStats(), settings: { shake: localStorage.getItem('ily_shake') !== '0', touch: 'ontouchstart' in window } }
+const run = { arena: 'home', lines: {} as Record<string, string>, hero: 'heroM', start: 0, time: 0, deaths: 0, learned: [] as string[], perks: [] as string[], debug: false, bestCombo: 0, combos: 0, moveUse: {} as Record<string, number>, boss: 0, total: newStats(), settings: { shake: localStorage.getItem('ily_shake') !== '0', touch: 'ontouchstart' in window } }
 
 function analyze(s: Stats, max = 2): string[] {
   const out: string[] = [], has = (k: string) => run.learned.includes(k) || out.includes(k)
@@ -53,14 +61,14 @@ function analyze(s: Stats, max = 2): string[] {
 const fmt = (ms: number) => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0') }
 
 // ---------- input ----------
-const inp = { block: false, grab: false, special2: false, pause: false, left: false, right: false, jump: false, down: false, atk: false, special: false, dodge: false, dash: false }
+const inp = { block: false, grab: false, special2: false, pause: false, left: false, right: false, jump: false, down: false, atk: false, special: false, dodge: false, dash: false, evade: false }
 const prev = { ...inp }
 const pressed = (k: keyof typeof inp) => inp[k] && !prev[k]
 const released = (k: keyof typeof inp) => !inp[k] && prev[k]
 
 function bindKeys(scene: Phaser.Scene) {
   const kb = scene.input.keyboard!, K = Phaser.Input.Keyboard.KeyCodes
-  const map: [keyof typeof inp, number[]][] = [['left', [K.LEFT, K.A]], ['right', [K.RIGHT, K.D]], ['jump', [K.UP, K.W, K.SPACE]], ['down', [K.DOWN, K.S]], ['atk', [K.J, K.Z]], ['special', [K.K, K.X]], ['dodge', [K.L, K.C]], ['dash', [K.SHIFT]], ['block', [K.I]], ['grab', [K.U]], ['special2', [K.O]], ['pause', [K.ESC, K.P]]]
+  const map: [keyof typeof inp, number[]][] = [['left', [K.LEFT, K.A]], ['right', [K.RIGHT, K.D]], ['jump', [K.UP, K.W, K.SPACE]], ['down', [K.DOWN, K.S]], ['atk', [K.J, K.Z]], ['special', [K.K, K.X]], ['dodge', [K.L, K.C]], ['dash', [K.SHIFT]], ['evade', [K.Q, K.E]], ['block', [K.I]], ['grab', [K.U]], ['special2', [K.O]], ['pause', [K.ESC, K.P]]]
   const keys = map.map(([n, cs]) => [n, cs.map(c => kb.addKey(c, true))] as const)
   return () => { if (DEMO) return; for (const [n, ks] of keys) { (inp as any)[n] = ks.some(k => k.isDown) || !!touch[n] || !!latch[n]; latch[n] = false } }
 }
@@ -153,7 +161,7 @@ class Boot extends Phaser.Scene {
   preload() {
     const L = this.add.text(W / 2, H / 2, 'Loading…', { fontFamily: FONT, fontSize: '40px' }).setOrigin(0.5)
     this.load.on('progress', (p: number) => L.setText('Loading… ' + Math.round(p * 100) + '%'))
-    for (const k of ['heroM', 'heroF', 'stoploss', 'exitliq', 'rugpull', 'bear']) this.load.image(k, 'sprites/' + k + '.png')
+    for (const k of ['heroM', 'heroF', 'stoploss', 'gasfee', 'exitliq', 'fud', 'rugpull', 'liquidation', 'bear']) this.load.image(k, 'sprites/' + k + '.png')
   }
   create() {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
@@ -230,7 +238,7 @@ class Arena extends Phaser.Scene {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
     bg(this, 0x1e1834, 0x3a2a5a)
     this.add.text(W / 2, 50, 'CHOOSE YOUR CHART', { fontFamily: FONT, fontSize: '56px', color: '#f5c84c', stroke: '#000', strokeThickness: 8 }).setOrigin(0.5)
-    const go = (a: string) => { run.arena = a; run.start = performance.now(); run.deaths = 0; run.learned = []; run.lines = {}; run.combos = 0; run.moveUse = {}; run.boss = 0; run.total = newStats(); this.scene.start('fight') }
+    const go = (a: string) => { run.arena = a; run.start = performance.now(); run.deaths = 0; run.learned = []; run.lines = {}; run.combos = 0; run.moveUse = {}; run.boss = 0; run.perks = []; run.bestCombo = 0; run.debug = Q.has('boss'); if (run.debug) run.boss = Math.min(BOSSES.length - 1, +Q.get('boss')!); run.total = newStats(); this.scene.start('fight') }
     ARENAS.forEach((a, i) => {
       const x = 180 + (i % 2) * 460 + 160, y = 140 + Math.floor(i / 2) * 230
       const rt = this.add.renderTexture(0, 0, W, H).setVisible(false)
@@ -263,12 +271,13 @@ class HowTo extends Phaser.Scene {
       ['Grab & Throw', 'U (up close)', 'Throw it into a wall for a bounce'],
       ['Block · Parry', 'Hold I · tap I as it hits', 'Guard drains a meter. Perfect timing stuns and reflects'],
       ['Dodge Roll', 'L (+ direction)', 'Invincible. Roll late for PERFECT DODGE slow-mo'],
-      ['PUMP Blast', 'K (meter full)', 'Big green energy'],
-      ['Hero Special', 'O (half meter)', 'HIM: Green Candle beam · HER: Short Squeeze flurry'],
+      ['Dodge', 'Q / E or DODGE', 'Quick invincible sidestep. Time it as a hit lands: slow-mo + counter'],
+      ['Send It Kick', 'K (40 meter)', 'Flying kick. Camera goes in, boss goes out'],
+      ['Hero Special', 'O (half meter)', 'HIM: Green Candle eruption · HER: Short Squeeze flurry'],
       ['Pause / Quit', 'Esc or P', 'Resume, restart, or rage quit'],
     ]
     rows.forEach((r, i) => {
-      const y = 82 + i * 42
+      const y = 76 + i * 40
       this.add.text(70, y, r[0], { fontFamily: FONT, fontSize: '23px', color: '#7dffb0' })
       this.add.text(430, y + 2, r[1], { fontFamily: 'Nunito', fontStyle: '800', fontSize: '20px', color: '#fff' })
       this.add.text(760, y + 4, r[2], { fontFamily: 'Nunito', fontSize: '17px', color: '#dde' })
@@ -305,9 +314,10 @@ class Rig {
     this.c = sc.add.container(0, 0, [this.bot, this.top]).setDepth(depth)
   }
   // src: the (hidden) proxy image whose transform the old code already computes; pose in texture px / degrees
-  sync(src: Phaser.GameObjects.Image, ps: { ta?: number; tx?: number; ty?: number; ba?: number; bx?: number; by?: number; bsy?: number }) {
+  sync(src: Phaser.GameObjects.Image, ps: { ta?: number; tx?: number; ty?: number; ba?: number; bx?: number; by?: number; bsy?: number; sq?: number }) {
+    const sq = ps.sq || 1
     const wy = -(this.h - this.cut) + (src.originY === 0.5 ? this.h / 2 : 0)
-    this.c.setPosition(src.x, src.y).setScale(src.scaleX, src.scaleY).setAngle(src.angle).setAlpha(src.alpha)
+    this.c.setPosition(src.x, src.y).setScale(src.scaleX * (2 - sq), src.scaleY * sq).setAngle(src.angle).setAlpha(src.alpha)
     this.top.setPosition(ps.tx || 0, wy + (ps.ty || 0)).setAngle(ps.ta || 0)
     this.bot.setPosition(ps.bx || 0, wy + (ps.by || 0)).setAngle(ps.ba || 0).setScale(1, ps.bsy || 1)
     for (const i of [this.top, this.bot]) { if (src.isTinted) { (i as any).tintFill = src.tintFill; i.setTint(src.tintTopLeft) } else i.clearTint() }
@@ -316,11 +326,11 @@ class Rig {
 class Fight extends Phaser.Scene {
   constructor() { super('fight') }
   B: any; p: any; boss: any; pImg!: Phaser.GameObjects.Image; bImg!: Phaser.GameObjects.Image
-  fx2!: Phaser.GameObjects.Graphics; rigP!: Rig; rigB!: Rig; fireT = -9; ui!: Phaser.GameObjects.Graphics; fx!: Phaser.GameObjects.Graphics; timerT!: Phaser.GameObjects.Text; info!: Phaser.GameObjects.Text
+  fx2!: Phaser.GameObjects.Graphics; lastBX?: number; ghostT2 = 0; rigP!: Rig; rigB!: Rig; fireT = -9; ui!: Phaser.GameObjects.Graphics; fx!: Phaser.GameObjects.Graphics; timerT!: Phaser.GameObjects.Text; info!: Phaser.GameObjects.Text
   emit!: Phaser.GameObjects.Particles.ParticleEmitter; projs: Proj[] = []; hazards: any[] = []
   stats!: Stats; freeze = 0; slow = 1; phase = 'intro'; readKeys!: () => void
   walls = { l: 40, r: 1240 }; tiles: { gone: number; warn: number }[] = []; tileHeat: number[] = []; tileT = 0
-  tapCount = 0; lastTap = 0; holdT = 0; stillT = 0; lastPX = 0; lowPrev = 0; demoT = 0; demoLife = 0; retry = false; active: string[] = []
+  combo = 0; comboT = 0; counterT = 0; landT = 0; ghostT = 0; dustT = 0; candleT = 7; pickT = 9; pickup: any = null; comboTxt!: Phaser.GameObjects.Text; tapCount = 0; lastTap = 0; holdT = 0; stillT = 0; lastPX = 0; lowPrev = 0; demoT = 0; demoLife = 0; retry = false; active: string[] = []
   init(d: any) { this.retry = !!d?.retry; (window as any).__fight = this }
   create() {
     centerCam(this); if (this.scene.key !== 'boot') document.body.classList.add('authed')
@@ -329,10 +339,12 @@ class Fight extends Phaser.Scene {
     const M = margin(this) + 40, n0 = this.children.list.length; paintArena(this, AK, W + 2 * M); this.children.list.slice(n0).forEach((o: any) => { o.x -= M }); this.add.rectangle(W / 2, H / 2, W + 2 * M, H, B.tint[1], 0.12)
     const fl = this.add.graphics(); fl.fillStyle(ARENAS.find(a => a.key === AK)!.floor, 1).fillRect(-M, FY, W + 2 * M, H - FY); fl.fillStyle(0x000000, 0.25).fillRect(-M, FY, W + 2 * M, H - FY); fl.fillStyle(0xffffff, 0.08).fillRect(-M, FY, W + 2 * M, 4)
     this.fx = this.add.graphics(); this.fx2 = this.add.graphics().setDepth(23)
+    this.combo = 0; this.comboT = 0; this.counterT = 0; this.candleT = 7; this.pickT = 9; this.pickup = null
+    this.comboTxt = this.add.text(40, 150, '', { fontFamily: FONT, fontSize: '40px', color: '#fff', stroke: '#000', strokeThickness: 8 }).setDepth(55)
     this.stats = newStats(); this.projs = []; this.hazards = []; this.freeze = 0; this.slow = 1; this.tapCount = 0; this.holdT = 0; this.stillT = 0
     this.walls = { l: 40, r: 1240 }; this.tiles = Array.from({ length: 12 }, () => ({ gone: 0, warn: 0 })); this.tileHeat = new Array(12).fill(0); this.tileT = 4
     const ph = 240
-    this.p = { x: 330, y: FY, vx: 0, vy: 0, face: 1, hp: DEMO && !this.retry && run.boss === 0 ? 12 : 100, meter: DEMO ? 60 : 0, st: 'idle', t: 0, move: '', hit: false, iframe: 0, ground: true, h: ph, dashT: 0, rollDir: 0 }
+    this.p = { x: 330, y: FY, vx: 0, vy: 0, face: 1, hp: DEMO && !this.retry && BK() === 'stoploss' ? 12 : 100, meter: DEMO ? 60 : 0, st: 'idle', t: 0, move: '', hit: false, iframe: 0, ground: true, h: ph, dashT: 0, rollDir: 0 }
     this.boss = { x: 960, y: FY, vy: 0, face: -1, hp: B.hp, max: B.hp, st: 'idle', t: 1.2, cd: 1.2, hit: false, air: false, armor: 0, flash: 0, atk: '', tx: 0, sniper: 0, blocked: 0 }
     if (DEMO && this.retry) this.boss.hp = this.boss.max = 70
     this.add.ellipse(0, 0, 10, 10).setVisible(false)
@@ -344,9 +356,9 @@ class Fight extends Phaser.Scene {
     this.timerT = this.add.text(W / 2, 22, '', { fontFamily: FONT, fontSize: '34px', color: '#fff', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5, 0).setDepth(51)
     this.add.text(40, 18, run.hero === 'heroF' ? 'YOU (HER)' : 'YOU (HIM)', { fontFamily: FONT, fontSize: '22px', color: '#7dffb0', stroke: '#000', strokeThickness: 5 }).setDepth(51)
     this.add.text(W - 40, 18, B.name, { fontFamily: FONT, fontSize: '22px', color: '#ff8f8f', stroke: '#000', strokeThickness: 5 }).setOrigin(1, 0).setDepth(51)
-    this.info = this.add.text(W / 2, 80, 'Boss ' + (run.boss + 1) + '/4 · Deaths ' + run.deaths + ' · Habits caught ' + run.learned.length, { fontFamily: 'Nunito', fontStyle: '800', fontSize: '17px', color: '#ddd' }).setOrigin(0.5, 0).setDepth(51)
+    this.info = this.add.text(W / 2, 80, 'Boss ' + (run.boss + 1) + '/' + BOSSES.length + ' · Deaths ' + run.deaths + ' · Habits caught ' + run.learned.length, { fontFamily: 'Nunito', fontStyle: '800', fontSize: '17px', color: '#ddd' }).setOrigin(0.5, 0).setDepth(51)
     // counters active this fight
-    this.active = run.boss === 3 ? [...run.learned] : run.learned.slice(-3)
+    this.active = FINAL() ? [...run.learned] : run.learned.slice(-3)
     if (this.active.length) this.add.text(W / 2, 104, 'COUNTERS ARMED: ' + this.active.map(k => hl(k)).join(' · '), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '14px', color: '#ff9f9f', wordWrap: { width: 1000 }, align: 'center' }).setOrigin(0.5, 0).setDepth(51)
     this.readKeys = bindKeys(this)
     if (run.settings.touch && !DEMO) this.touchUI()
@@ -381,7 +393,7 @@ class Fight extends Phaser.Scene {
     }
     mk(L + 85, 625, 58, '◀', 'left'); mk(L + 215, 625, 58, '▶', 'right'); mk(L + 150, 515, 46, '▲', 'jump'); mk(L + 150, 695, 32, '▼', 'down')
     mk(R + 1185, 610, 64, 'HIT', 'atk'); mk(R + 1060, 660, 42, 'ROLL', 'dodge'); mk(R + 1050, 555, 42, 'BLOCK', 'block'); mk(R + 1110, 470, 40, 'GRAB', 'grab')
-    mk(R + 1205, 470, 40, 'PUMP', 'special'); mk(R + 1205, 375, 38, 'HERO', 'special2'); mk(R + 1105, 375, 38, 'DASH', 'dash')
+    mk(R + 1205, 470, 40, 'SEND IT', 'special'); mk(R + 995, 455, 42, 'DODGE', 'evade'); mk(R + 1205, 375, 38, 'HERO', 'special2'); mk(R + 1105, 375, 38, 'DASH', 'dash')
     // Native multi-touch: each finger owns one button; quick taps are latched so they never get lost between frames
     const own = new Map<number, string>(), canvas = this.game.canvas
     const hit = (cx: number, cy: number) => {
@@ -405,7 +417,7 @@ class Fight extends Phaser.Scene {
     this.phase = 'intro'; const B = this.B
     const band = this.add.rectangle(W / 2, H / 2, W, 190, 0x000000, 0.75).setDepth(70)
     const n = this.add.text(-400, H / 2 - 30, B.name, { fontFamily: FONT, fontSize: '96px', color: '#f5c84c', stroke: '#2a1600', strokeThickness: 10 }).setOrigin(0.5).setDepth(71)
-    const s = this.add.text(W + 400, H / 2 + 50, (run.boss === 3 ? 'FINAL BOSS — ' : 'BOSS ' + (run.boss + 1) + ' — ') + pick(BOSS_LINES[B.key].intro), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '26px', color: '#fff' }).setOrigin(0.5).setDepth(71)
+    const s = this.add.text(W + 400, H / 2 + 50, (FINAL() ? 'FINAL BOSS — ' : 'BOSS ' + (run.boss + 1) + ' — ') + pick(BOSS_LINES[B.key].intro), { fontFamily: 'Nunito', fontStyle: '800', fontSize: '26px', color: '#fff' }).setOrigin(0.5).setDepth(71)
     if (this.retry) s.setText('ROUND 2 — ' + pick(BOSS_LINES[B.key].retry))
     this.tweens.add({ targets: n, x: W / 2, duration: 450, ease: 'Back.out' }); this.tweens.add({ targets: s, x: W / 2, duration: 450, delay: 150, ease: 'Back.out' })
     this.tweens.add({ targets: this.bImg, scale: this.bImg.scale * 1.12, yoyo: true, duration: 250, delay: 300 })
@@ -465,16 +477,21 @@ class Fight extends Phaser.Scene {
     if (p.st !== 'block') this.guard = Math.min(100, this.guard + 14 * dt)
     if (p.st === 'hurt') { if (p.t > (p.stun || 0.32)) { p.st = 'idle'; p.stun = 0 } }
     else if (p.st === 'block') { p.vx = 0; S.block += dt; if (!inp.block) p.st = 'idle' }
+    else if (p.st === 'evade') { const D = perk('bot') ? 0.34 : 0.28; p.vx = p.evDir * 950 * Math.max(0, 1 - p.t / D); if (p.t > D) { p.st = 'idle'; p.vx = 0 } }
     else if (p.st === 'roll') { p.vx = p.rollDir * 620; if (p.t > 0.38) { p.st = 'idle'; p.vx = 0 } }
     else if (p.st === 'attack') {
       const m = MOVES[p.move]
-      if (p.move === 'dash') p.vx = p.face * Math.max(0, 900 * (1 - p.t / m.dur))
+      if (p.move === 'moon') p.vx = p.face * 1050 * Math.max(0, 1 - p.t / m.dur)
+      else if (p.move === 'dash') p.vx = p.face * Math.max(0, 900 * (1 - p.t / m.dur))
       else if (p.move === 'slam') { p.vx = 0; if (p.ground) { if (p.t < 2) { this.shake(0.02, 180); this.burst(p.x + p.face * 40, FY, 14, 0xd8c8a0); this.tryHit(true) }; p.st = 'idle' } }
       else if (p.move === 'squeeze') { p.vx = 0; if (p.t - this.sq > 0.09) { this.sq = p.t; p.hit = false } }
       else if (p.move !== 'air') p.vx *= 0.85
       if (p.move !== 'slam' && p.t >= m.a0 && p.t <= m.a1) this.tryHit(false)
       if (p.move !== 'slam' && p.t > m.dur) p.st = 'idle'
     }
+    this.comboT -= dt; if (this.comboT <= 0) this.combo = 0; this.counterT = Math.max(0, this.counterT - dt)
+    if (perk('staking') && p.st !== 'dead') p.hp = Math.min(100, p.hp + 2 * dt)
+    if (pressed('evade') && p.ground && (p.st === 'idle' || p.st === 'block' || p.st === 'charge' || (p.st === 'attack' && p.move !== 'slam' && p.t > MOVES[p.move].a1))) { this.evade(mv); return }
     if (p.st === 'idle' || p.st === 'charge') {
       if (p.st === 'idle') { p.vx = mv * 360; if (mv) p.face = mv }
       else p.vx = 0
@@ -487,7 +504,7 @@ class Fight extends Phaser.Scene {
         const key = p.rollDir < 0 ? 'dodgeL' : 'dodgeR'
         if (this.active.includes(key) && b.st !== 'windup' && b.st !== 'swipe' && Math.random() < 0.85) this.bossAttack('read', p.x + p.rollDir * 230)
       }
-      if (pressed('special') && p.meter >= 100) this.pump()
+      if (pressed('special') && p.meter >= 40) this.sendIt()
       if (pressed('special2') && p.meter >= 50) this.heroSpecial()
       if (inp.block && p.ground && p.st === 'idle') { if (!prev.block) this.blockT0 = this.time.now; p.st = 'block'; p.t = 0; return }
       if (pressed('grab') && p.ground && p.st === 'idle') { this.grab(); return }
@@ -518,14 +535,14 @@ class Fight extends Phaser.Scene {
     p.vy += 2400 * dt; p.y += p.vy * dt; p.x += p.vx * dt
     const tileGone = this.tileUnder(p.x)
     if (p.y >= FY && !(tileGone && p.y < FY + 5 && false)) {
-      if (tileGone && run.boss >= 2) { if (p.y > FY + 120) this.fall() }
+      if (tileGone && TILES()) { if (p.y > FY + 120) this.fall() }
       else { if (!p.ground) { this.shakeLand() } p.y = FY; p.vy = 0; p.ground = true }
     } else p.ground = p.y >= FY && !tileGone
     p.x = Phaser.Math.Clamp(p.x, this.walls.l + 30, this.walls.r - 30)
-    if (p.st !== 'attack' && p.st !== 'roll' && p.st !== 'hurt') p.face = mv || (b.x > p.x ? 1 : -1)
+    if (p.st !== 'attack' && p.st !== 'roll' && p.st !== 'hurt' && p.st !== 'evade') p.face = mv || (b.x > p.x ? 1 : -1)
   }
-  shakeLand() { this.burst(this.p.x, FY, 4, 0xd8c8a0) }
-  tileUnder(x: number) { if (run.boss < 2) return false; const i = Math.floor((x - 40) / 100); return i >= 0 && i < 12 && this.tiles[i].gone > 0 }
+  shakeLand() { this.burst(this.p.x, FY, 10, 0xd8c8a0); this.landT = 0.16; this.shake(0.005, 70) }
+  tileUnder(x: number) { if (!TILES()) return false; const i = Math.floor((x - 40) / 100); return i >= 0 && i < 12 && this.tiles[i].gone > 0 }
   fall() { const p = this.p; this.hurtPlayer(12, 0, true); p.x = (this.walls.l + this.walls.r) / 2; p.y = FY - 300; p.vy = 0; p.iframe = 1.2; this.num(p.x, FY - 330, 'RUGGED!', '#ff6b6b', 44) }
   doMove(m: string) {
     const p = this.p; p.st = 'attack'; p.move = m; p.t = 0; p.hit = false
@@ -551,13 +568,21 @@ class Fight extends Phaser.Scene {
   }
   damageBoss(dmg: number, kb: number, launch: number, meter: number, hx: number) {
     const b = this.boss, p = this.p
+    if (perk('leverage')) dmg = Math.round(dmg * 1.25)
+    if (this.counterT > 0) { dmg = Math.round(dmg * 1.5); this.counterT = 0; this.num(hx, b.y - this.B.h - 40, 'COUNTER x1.5', '#7dffb0', 34) }
+    this.combo++; this.comboT = perk('wash') ? 3.2 : 1.6; run.bestCombo = Math.max(run.bestCombo, this.combo)
+    if (perk('front') && this.combo % 10 === 0) { p.hp = Math.min(100, p.hp + 12); this.num(p.x, p.y - p.h - 40, '+12 FRONT-RUN', '#7dffb0', 30) }
+    if (p.move === 'finisher' && this.combo >= 5) { dmg += 8; this.num(hx, b.y - this.B.h - 80, 'REKT FINISHER', '#ff5bf0', 54); this.slow = 0.3; this.time.delayedCall(320, () => { if (this.phase === 'fight') this.slow = 1 }) }
+    if (perk('whale')) meter *= 1.5
     b.hp = Math.max(0, b.hp - dmg); b.flash = 0.09; p.meter = Math.min(100, p.meter + meter)
     b.x += Math.sign(kb) * Math.min(80, Math.abs(kb) / 6); b.kb = kb * 0.6
-    if (launch && run.boss !== 3) { b.vy = -launch; b.air = true } else if (launch) { b.vy = -launch * 0.5; b.air = true }
+    if (launch && !FINAL()) { b.vy = -launch; b.air = true } else if (launch) { b.vy = -launch * 0.5; b.air = true }
     if (this.p.move === 'sweep' && b.st !== 'windup') { b.st = 'stagger'; b.t = 0.75; this.num(b.x, b.y - this.B.h - 20, 'SWEPT', '#7dffb0', 30) }
     else if (b.st === 'windup' && dmg >= 13) { b.st = 'stagger'; b.t = 0.5 }
     else if (b.st !== 'windup' && b.st !== 'swipe') { b.st = 'stagger'; b.t = 0.25 + dmg / 80 }
     this.freeze = dmg > 14 ? 0.11 : 0.055
+    if (dmg >= 14 && this.phase === 'fight') { const c = this.cameras.main; c.zoomTo(1.1, 70); this.time.delayedCall(170, () => { if (this.phase === 'fight') c.zoomTo(1, 200) }) }
+    if (!b.enraged && b.hp > 0 && b.hp < b.max / 2) { b.enraged = true; b.cd = 0.9; this.num(b.x, b.y - this.B.h - 60, 'ENRAGED · PHASE 2', '#ff4040', 48); this.cameras.main.flash(220, 255, 30, 30); this.shake(0.02, 300); sfx.warn() }
     this.shake(dmg > 14 ? 0.018 : 0.008, dmg > 14 ? 200 : 100)
     if (dmg > 14) sfx.heavy(); else sfx.punch()
     this.burst(hx, b.y - this.B.h * 0.55, dmg > 14 ? 22 : 10, 0xffe066)
@@ -566,7 +591,7 @@ class Fight extends Phaser.Scene {
   }
   perfect() {
     const p = this.p; p.iframe = 0.5; p.meter = Math.min(100, p.meter + 15); sfx.up()
-    this.num(p.x, p.y - p.h - 30, 'PERFECT DODGE', '#7dffb0', 38); this.slow = 0.35; this.cameras.main.flash(120, 120, 255, 180)
+    this.num(p.x, p.y - p.h - 30, 'PERFECT DODGE · COUNTER!', '#7dffb0', 38); this.counterT = 1.2; for (let i = 0; i < 4; i++) this.time.delayedCall(i * 40, () => this.ghost(this.pImg, run.hero, 0x7dffb0)); this.slow = 0.35; this.cameras.main.flash(120, 120, 255, 180)
     this.time.delayedCall(260, () => { if (this.phase === 'fight') this.slow = 1 })
   }
   parry() {
@@ -579,7 +604,7 @@ class Fight extends Phaser.Scene {
   grab() {
     const p = this.p, b = this.boss, S = this.stats; S.moves['grab'] = (S.moves['grab'] || 0) + 1; run.moveUse['grab'] = (run.moveUse['grab'] || 0) + 1
     if (Math.abs(b.x - p.x) > 190 || b.air || b.st === 'windup') { sfx.whiff(); p.st = 'hurt'; p.t = 0.1; return }
-    if ((this.active.includes('grabby') || run.boss === 3) && Math.random() < 0.5) { this.num(b.x, b.y - this.B.h - 10, 'SLIPPED. IT KNEW.', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0; return }
+    if ((this.active.includes('grabby') || FINAL()) && Math.random() < 0.5) { this.num(b.x, b.y - this.B.h - 10, 'SLIPPED. IT KNEW.', '#ff8f8f', 30); sfx.block(); p.st = 'hurt'; p.t = 0; return }
     run.combos++; const dir = -p.face
     this.tweens.add({ targets: b, x: p.x + dir * 40, duration: 120, onComplete: () => { b.vy = -600; b.air = true; this.damageBoss(14, dir * 900, 0, 12, b.x); this.num(p.x, p.y - p.h - 30, 'THROW', '#7dffb0', 34) } })
     p.face = dir; p.st = 'attack'; p.move = 'punch'; p.t = 0.2; p.hit = true
@@ -589,22 +614,55 @@ class Fight extends Phaser.Scene {
     const key = run.hero === 'heroF' ? 'squeeze' : 'beam'; this.stats.moves[key] = (this.stats.moves[key] || 0) + 1; run.moveUse[key] = (run.moveUse[key] || 0) + 1
     if (key === 'squeeze') { this.num(p.x, p.y - p.h - 40, 'SHORT SQUEEZE!', '#ffd23f', 48); sfx.pump(); this.sq = 0; this.doMove('squeeze'); return }
     this.num(p.x, p.y - p.h - 40, 'GREEN CANDLE!', '#5dff9a', 48); sfx.pump(); this.shake(0.015, 400)
-    const x0 = p.x + p.face * 50, len = p.face > 0 ? W - x0 : x0
-    const beam = this.add.rectangle(p.face > 0 ? x0 : 0, p.y - p.h * 0.55, len, 70, 0x2fbf71).setOrigin(0, 0.5).setDepth(30).setStrokeStyle(8, 0xd8ffe6)
-    this.tweens.add({ targets: beam, scaleY: 0.1, alpha: 0, duration: 650, onComplete: () => beam.destroy() })
-    for (let i = 0; i < 3; i++) this.time.delayedCall(i * 140, () => { const b = this.boss; if (this.phase === 'fight' && Math.sign(b.x - p.x) === p.face) this.damageBoss(9, p.face * 200, 0, 0, b.x - p.face * 40) })
+    const x0 = Phaser.Math.Clamp(p.x + p.face * 170, 60, W - 60)
+    const pil = this.add.rectangle(x0, FY, 150, 460, 0x2fbf71).setOrigin(0.5, 1).setDepth(30).setStrokeStyle(8, 0xd8ffe6).setScale(1, 0.05)
+    const wick = this.add.rectangle(x0, FY - 460, 10, 90, 0x2fbf71).setOrigin(0.5, 1).setDepth(30).setAlpha(0)
+    this.tweens.add({ targets: pil, scaleY: 1, duration: 140, ease: 'Back.out', yoyo: true, hold: 380, onComplete: () => { pil.destroy(); wick.destroy() } }); this.tweens.add({ targets: wick, alpha: 1, duration: 140, yoyo: true, hold: 380 })
+    this.burst(x0, FY, 20, 0x7dffb0)
+    for (let i = 0; i < 3; i++) this.time.delayedCall(80 + i * 140, () => { const b = this.boss; if (this.phase === 'fight' && Math.abs(b.x - x0) < 160) this.damageBoss(9, p.face * 200, i === 2 ? 600 : 0, 0, b.x) })
     p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true
   }
-  pump() {
-    const p = this.p; p.meter = 0; this.fireT = this.time.now; sfx.pump(); this.shake(0.012, 300); run.combos++
-    this.stats.moves['pump'] = (this.stats.moves['pump'] || 0) + 1; run.moveUse['pump'] = (run.moveUse['pump'] || 0) + 1
-    const o = this.add.rectangle(p.x + p.face * 60, p.y - p.h * 0.55, 120, 46, 0x5dff9a).setDepth(30).setStrokeStyle(6, 0xd8ffe6)
-    this.projs.push({ o, vx: p.face * 1300, vy: 0, dmg: 34, fromBoss: false, life: 1.5, big: true })
-    this.num(p.x, p.y - p.h - 30, 'PUMP!', '#5dff9a', 56)
-    p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true
+  sendIt() {
+    const p = this.p; p.meter -= 40; run.combos++; sfx.pump(); this.num(p.x, p.y - p.h - 30, 'SEND IT!', '#ffd23f', 52)
+    p.vy = -420; p.ground = false; this.doMove('moon'); this.cameras.main.zoomTo(1.06, 120)
+  }
+  ghost(img: Phaser.GameObjects.Image, key: string, col = 0x7dffb0) {
+    const g = this.add.image(img.x, img.y, key).setOrigin(img.originX, img.originY).setScale(img.scaleX, img.scaleY).setAngle(img.angle).setTintFill(col).setAlpha(0.45).setDepth(18)
+    this.tweens.add({ targets: g, alpha: 0, duration: 260, onComplete: () => g.destroy() })
+  }
+  evade(mv: number) {
+    const p = this.p; p.evDir = mv || -p.face; p.st = 'evade'; p.t = 0; p.iframe = perk('bot') ? 0.42 : 0.32; p.vx = 0; sfx.roll()
+    this.stats.rolls[p.evDir < 0 ? 0 : 1]++
+    const key = p.evDir < 0 ? 'dodgeL' : 'dodgeR', b = this.boss
+    if (this.active.includes(key) && b.st !== 'windup' && b.st !== 'swipe' && Math.random() < 0.6) this.bossAttack('read', p.x + p.evDir * 200)
+  }
+  dropAt(x: number, dmg = 9, col = 0xff5050) {
+    const mark = this.add.ellipse(x, FY + 4, 160, 26, col, 0.55).setDepth(5)
+    const warn = this.add.text(x, FY - 330, '▼', { fontFamily: FONT, fontSize: '40px', color: '#ff5050' }).setOrigin(0.5).setDepth(31)
+    this.tweens.add({ targets: [mark, warn], alpha: 0.15, yoyo: true, repeat: 3, duration: 110 })
+    this.time.delayedCall(850, () => {
+      mark.destroy(); warn.destroy(); if (this.phase !== 'fight') return
+      const drop = this.add.rectangle(x, FY - 420, 44, 130, col).setDepth(30).setStrokeStyle(4, 0xffd0d0); const wick = this.add.rectangle(x, FY - 510, 6, 60, col).setDepth(30)
+      this.tweens.add({ targets: [drop, wick], y: '+=360', duration: 220, ease: 'Quad.in', onComplete: () => { this.burst(x, FY, 14, col); this.shake(0.01); drop.destroy(); wick.destroy(); if (Math.abs(this.p.x - x) < 90 && this.p.y > FY - 200) this.hurtPlayer(dmg, Math.sign(this.p.x - x || 1) * 300) } })
+    })
+  }
+  laser(x: number) {
+    if (this.phase !== 'fight') return
+    const beam = this.add.rectangle(x, FY / 2, 120, FY, 0xff2a2a, 0.85).setDepth(29).setStrokeStyle(6, 0xffd0d0)
+    this.tweens.add({ targets: beam, scaleX: 0.05, alpha: 0, duration: 380, onComplete: () => beam.destroy() })
+    sfx.heavy(); this.shake(0.012, 160); this.burst(x, FY, 16, 0xff5050)
+    if (Math.abs(this.p.x - x) < 70) this.hurtPlayer(15, Math.sign(this.p.x - x || 1) * 380)
+  }
+  perkPick(next: () => void) {
+    const pool = Object.keys(PERKS).filter(k => !perk(k)).sort(() => Math.random() - 0.5).slice(0, 3)
+    if (!pool.length || DEMO) { next(); return }
+    overlay(`<h2>PICK A PERK</h2><p>Bull market bonus. Choose one. It stacks for the whole run.</p>${pool.map(k => `<button id="pk_${k}" style="width:100%;text-align:left"><b>${PERKS[k][0]}</b> — ${PERKS[k][1]}</button>`).join('')}`)
+    pool.forEach(k => { (document.getElementById('pk_' + k) as HTMLElement).onclick = () => { run.perks.push(k); overlay(''); sfx.up(); next() } })
   }
   hurtPlayer(dmg: number, kx: number, force = false, unblock = false): boolean | string {
     const p = this.p
+    if (!force && p.st === 'evade') { if (p.t < (perk('bot') ? 0.3 : 0.2) && this.slow === 1) this.perfect(); return false }
+    if (!force && perk('diamond')) dmg = Math.max(1, Math.round(dmg * 0.75))
     if (!force && p.st === 'roll' && p.t > 0.12 && this.slow === 1) { this.perfect(); return false }
     if (!force && (p.iframe > 0 || p.st === 'dead')) return false
     if (!force && p.st === 'block' && !unblock) {
@@ -614,7 +672,7 @@ class Fight extends Phaser.Scene {
       else this.num(p.x, p.y - p.h - 10, 'BLOCKED', '#88ccff', 24)
       return false
     }
-    p.hp = Math.max(0, p.hp - dmg); p.st = 'hurt'; p.t = 0; p.vx = kx; p.iframe = 0.5
+    p.hp = Math.max(0, p.hp - dmg); this.combo = 0; p.st = 'hurt'; p.t = 0; p.vx = kx; p.iframe = 0.5
     sfx.hurt(); this.shake(0.014, 160); this.freeze = 0.07; this.cameras.main.flash(80, 255, 60, 60)
     this.burst(p.x, p.y - p.h / 2, 12, 0xff6b6b); this.num(p.x, p.y - p.h - 10, '-' + dmg, '#ff6b6b', 34)
     if (p.hp <= 0) this.die()
@@ -623,12 +681,15 @@ class Fight extends Phaser.Scene {
   // ---- boss ----
   bossAttack(kind: string, tx = 0) {
     const b = this.boss; b.st = 'windup'; b.atk = kind; b.tx = tx
-    b.unb = (kind === 'swipe' || kind === 'read') && (this.active.includes('turtle') || run.boss === 3) && Math.random() < 0.45
+    b.unb = (kind === 'swipe' || kind === 'read') && (this.active.includes('turtle') || FINAL()) && Math.random() < 0.45
     if (b.unb) this.num(b.x, FY - this.B.h - 30, 'UNBLOCKABLE', '#c38bff', 30)
     const fast = this.active.includes('noDodge') ? 0.75 : 1
-    b.t = (kind === 'read' ? 0.38 : kind === 'swipe' ? 0.5 : kind === 'anti' ? 0.32 : kind === 'leap' ? 0.55 : kind === 'snipe' ? 0.8 : 0.5) * fast * (run.boss === 0 ? 0.85 : 1)
+    const WT: any = { read: 0.38, swipe: 0.5, anti: 0.32, leap: 0.55, snipe: 0.8, lob: 0.55, charge: 0.7, fud: 0.6, blink: 0.4, laser: 0.75, candles: 0.5 }
+    b.t = (WT[kind] ?? 0.5) * fast * (b.enraged ? 0.88 : 1) * (BK() === 'stoploss' ? 0.85 : 1)
     if (kind === 'read') this.num(tx, FY - 260, 'READ YOU!', '#ff6b6b', 40)
     if (kind === 'snipe') this.num(this.p.x, FY - 280, 'STOP!', '#ff4040', 40)
+    const TL: any = { lob: 'PRIORITY FEE!', charge: 'GAS SPIKE!', fud: 'FUD INCOMING', blink: 'SOURCES?', laser: 'LIQ PRICE: YOU', candles: 'RED CANDLES!' }
+    if (TL[kind]) this.num(kind === 'laser' ? tx : b.x, FY - this.B.h - 70, TL[kind], '#ffb347', 36)
     sfx.warn()
   }
   updBoss(dt: number) {
@@ -640,7 +701,7 @@ class Fight extends Phaser.Scene {
       if (Math.abs(b.kb) > 250 && (b.x < this.walls.l + 70 || b.x > this.walls.r - 70)) { b.kb = -b.kb * 0.5; b.hp = Math.max(1, b.hp - 6); this.num(b.x, b.y - this.B.h, 'WALL BOUNCE +6', '#ffd23f', 34); this.shake(0.02, 160); sfx.heavy(); this.burst(b.x, b.y - this.B.h / 2, 16, 0xffffff) } }
     b.x = Phaser.Math.Clamp(b.x, this.walls.l + 60, this.walls.r - 60)
     const d = p.x - b.x, ad = Math.abs(d)
-    let speed = B.speed * (act('runLow') && p.hp < 35 ? 1.5 : 1)
+    let speed = B.speed * (act('runLow') && p.hp < 35 ? 1.5 : 1) * (b.enraged ? 1.3 : 1)
     if (b.st === 'stagger') { if (b.t <= 0) { b.st = 'idle'; b.cd = 0.3 } return }
     if (b.st === 'windup') {
       if (b.atk === 'leap' && b.t < 0.15 && !b.air) { b.vy = -1000; b.air = true; b.tx = p.x }
@@ -648,21 +709,27 @@ class Fight extends Phaser.Scene {
       if (b.t <= 0) this.release()
       return
     }
-    if (b.st === 'swipe') { if (b.t <= 0) { b.st = 'idle'; b.cd = (run.boss === 0 ? 0.55 : 0.85) * (act('noDodge') ? 0.7 : 1) } return }
+    if (b.st === 'swipe' && b.rush > 0) { b.rush -= dt; b.x += b.face * 1150 * dt; if (Math.random() < 0.5) this.burst(b.x - b.face * 40, FY, 2, 0xd8c8a0); if (!b.rushHit && Math.abs(p.x - b.x) < 90 && p.y > FY - 200) { b.rushHit = true; this.hurtPlayer(14, b.face * 520) } if (b.x <= this.walls.l + 61 || b.x >= this.walls.r - 61) { b.rush = 0; this.shake(0.015, 150) } }
+    if (b.st === 'swipe') { if (b.t <= 0) { b.st = 'idle'; b.cd = (b.enraged ? 0.7 : 1) * (BK() === 'stoploss' ? 0.55 : 0.85) * (act('noDodge') ? 0.7 : 1) } return }
     if (b.air) return
     b.face = d > 0 ? 1 : -1
     // decide
     if (b.cd <= 0) {
       const still = this.stillT > (B.native === 'still' ? 0.9 : 1.4) && (B.native === 'still' || act('still'))
       if (still) { this.bossAttack('snipe'); return }
-      if (!p.ground && ad < 330 && (act('jumper') || run.boss === 3)) { this.bossAttack('anti'); return }
+      if (!p.ground && ad < 330 && (act('jumper') || FINAL())) { this.bossAttack('anti'); return }
       const camp = ['campL', 'campM', 'campR'].find(k => act(k))
       if ((camp || B.native === 'walls') && Math.random() < 0.25) { this.hazard(camp ? ['campL', 'campM', 'campR'].indexOf(camp) : -1); b.cd = 0.6 }
+      const nat = B.native, rr = Math.random()
+      if (nat === 'gas' && ad > 160 && rr < 0.4) { this.bossAttack(rr < 0.22 ? 'lob' : 'charge', p.x); return }
+      if (nat === 'fud' && rr < 0.45) { this.bossAttack(rr < 0.25 ? 'fud' : 'blink', p.x); return }
+      if (nat === 'lasers' && rr < 0.5) { this.bossAttack(rr < 0.3 ? 'laser' : 'candles', p.x); return }
+      if (b.enraged && rr > 0.8) { this.bossAttack('laser', p.x); return }
       if (ad < 210) { this.bossAttack('swipe'); return }
       const r = Math.random()
       if (r < 0.35) { this.bossAttack('shoot'); return }
-      if (r < 0.55 && run.boss !== 1) { this.bossAttack('leap'); return }
-      if (run.boss === 3 && r < 0.7) { this.bossAttack('roar'); return }
+      if (r < 0.55 && BK() !== 'exitliq') { this.bossAttack('leap'); return }
+      if (FINAL() && r < 0.7) { this.bossAttack('roar'); return }
       b.cd = 0.4
     }
     if (ad > 170) b.x += Math.sign(d) * speed * dt
@@ -686,7 +753,19 @@ class Fight extends Phaser.Scene {
       sfx.shot()
       const lead = this.active.includes('dodgeL') ? -1 : this.active.includes('dodgeR') ? 1 : 0
       this.shot(b.x + b.face * 80, FY - this.B.h * 0.55, b.face * 620, 0, 10)
-      if (run.boss >= 2 || lead) this.shot(b.x + b.face * 80, FY - 40, b.face * 520, 0, 8)
+      if (TILES() || lead) this.shot(b.x + b.face * 80, FY - 40, b.face * 520, 0, 8)
+    } else if (a === 'lob') {
+      sfx.shot(); for (const off of [-140, 0, 140]) { const tx = b.tx + off, q = this.shot(b.x + b.face * 50, FY - this.B.h * 0.7, (tx - b.x) / 0.9, -720, 9, 0xffd23f); q.g = 1600 }
+    } else if (a === 'charge') {
+      b.rush = 0.55; b.rushHit = false; b.t = 0.6; sfx.whiff()
+    } else if (a === 'fud') {
+      sfx.shot(); const hs = [FY - 40, FY - 140, FY - 230].sort(() => Math.random() - 0.5).slice(0, 2); hs.forEach(y => { const q = this.shot(b.x + b.face * 60, y, b.face * 400, 0, 10, 0x777788); q.o.setRadius(30) })
+    } else if (a === 'blink') {
+      this.ghost(this.bImg, this.B.key, 0x9999aa); b.x = Phaser.Math.Clamp(p.x - p.face * 130, this.walls.l + 60, this.walls.r - 60); b.face = p.x > b.x ? 1 : -1; this.burst(b.x, FY - 100, 14, 0x777788); b.st = 'idle'; this.bossAttack('swipe'); return
+    } else if (a === 'laser') {
+      this.laser(b.tx); if (this.B.native === 'lasers' && b.enraged) this.time.delayedCall(350, () => this.laser(Phaser.Math.Clamp(b.tx + (Math.random() < 0.5 ? -200 : 200), 80, W - 80)))
+    } else if (a === 'candles') {
+      for (const off of [-230, 0, 230]) this.dropAt(Phaser.Math.Clamp(this.p.x + off, 80, W - 80), 10)
     } else if (a === 'snipe') {
       sfx.shot(); this.shake(0.01, 100)
       this.shot(b.x + b.face * 80, FY - 110, b.face * 1500, 0, 14)
@@ -700,9 +779,9 @@ class Fight extends Phaser.Scene {
     const s = this.add.ellipse(x, y, 260, 90, 0xff5050, 0.6).setDepth(25)
     this.tweens.add({ targets: s, scaleX: 1.4, alpha: 0, duration: 220, onComplete: () => s.destroy() })
   }
-  shot(x: number, y: number, vx: number, vy: number, dmg: number) {
-    const o = this.add.circle(x, y, 16, 0xff4d4d).setStrokeStyle(5, 0xffd0d0).setDepth(30)
-    this.projs.push({ o, vx, vy, dmg, fromBoss: true, life: 3 })
+  shot(x: number, y: number, vx: number, vy: number, dmg: number, col = 0xff4d4d): any {
+    const o = this.add.circle(x, y, 16, col).setStrokeStyle(5, 0xffd0d0).setDepth(30)
+    const q: any = { o, vx, vy, dmg, fromBoss: true, life: 3 }; this.projs.push(q); return q
   }
   shockwave(x: number) {
     this.shake(0.02, 220); sfx.heavy(); this.burst(x, FY, 18, 0xd8c8a0)
@@ -715,37 +794,48 @@ class Fight extends Phaser.Scene {
     this.tweens.add({ targets: mark, alpha: 0.15, yoyo: true, repeat: 3, duration: 120 })
     this.time.delayedCall(800, () => {
       mark.destroy(); if (this.phase !== 'fight') return
-      const drop = this.add.rectangle(x, FY - 400, 40, 120, run.boss === 1 ? 0x9b6bff : 0xff5050).setDepth(30)
+      const drop = this.add.rectangle(x, FY - 400, 40, 120, BK() === 'exitliq' ? 0x9b6bff : 0xff5050).setDepth(30)
       this.tweens.add({ targets: drop, y: FY - 60, duration: 220, ease: 'Quad.in', onComplete: () => { this.burst(x, FY, 14, 0x9b6bff); this.shake(0.01); drop.destroy(); if (Math.abs(this.p.x - x) < 95 && this.p.y > FY - 200) this.hurtPlayer(9, Math.sign(this.p.x - x) * 300) } })
     })
   }
   updProj(dt: number) {
     const p = this.p, b = this.boss
     this.projs = this.projs.filter(q => {
-      q.life -= dt; q.o.x += q.vx * dt; q.o.y += q.vy * dt
+      q.life -= dt; if (q.g) q.vy += q.g * dt; q.o.x += q.vx * dt; q.o.y += q.vy * dt
       if (q.big) this.emit.emitParticle(2, q.o.x, q.o.y)
       if (q.fromBoss) {
         const hy = q.o.y > p.y - p.h && q.o.y < p.y + 10
-        if (Math.abs(q.o.x - p.x) < 50 && hy && p.iframe <= 0) { if (this.hurtPlayer(q.dmg, Math.sign(q.vx) * 300) === 'parry') { q.vx = -q.vx * 1.4; q.fromBoss = false; q.life = 1.5; q.dmg = 15 } else q.life = 0 }
+        if (Math.abs(q.o.x - p.x) < 50 && hy && (p.st === 'evade' || p.st === 'roll') && !q.dodged) { q.dodged = true; if (this.slow === 1) this.perfect() }
+        if (q.g && q.o.y > FY) { this.burst(q.o.x, FY, 8, 0xffd23f); if (Math.abs(q.o.x - p.x) < 70 && p.y > FY - 60 && p.iframe <= 0) this.hurtPlayer(q.dmg, Math.sign(q.vx) * 200); q.life = 0 }
+        else if (Math.abs(q.o.x - p.x) < 50 && hy && p.iframe <= 0) { if (this.hurtPlayer(q.dmg, Math.sign(q.vx) * 300) === 'parry') { q.vx = -q.vx * 1.4; q.fromBoss = false; q.life = 1.5; q.dmg = 15 } else q.life = 0 }
       } else if (Math.abs(q.o.x - b.x) < this.B.h * 0.35 && this.phase === 'fight') { this.damageBoss(q.dmg, Math.sign(q.vx) * 500, 0, 0, q.o.x); this.pushWalls(120); q.life = 0 }
       if (q.life <= 0 || q.o.x < -100 || q.o.x > W + 100) { q.o.destroy(); return false }
       return true
     })
   }
-  pushWalls(n: number) { if (run.boss !== 1) return; this.walls.l = Math.max(40, this.walls.l - n); this.walls.r = Math.min(1240, this.walls.r + n) }
+  pushWalls(n: number) { if (BK() !== 'exitliq') return; this.walls.l = Math.max(40, this.walls.l - n); this.walls.r = Math.min(1240, this.walls.r + n) }
   updArena(dt: number) {
+    if (this.phase === 'fight') {
+      const p = this.p
+      if (run.boss > 0) { this.candleT -= dt; if (this.candleT <= 0) { this.candleT = (this.boss.enraged ? 4 : 7) + Math.random() * 3; this.dropAt(Phaser.Math.Clamp(p.x + (Math.random() - 0.5) * 300, 80, W - 80), 8) } }
+      this.pickT -= dt
+      if (this.pickT <= 0 && !this.pickup) { this.pickT = 12; const x = 120 + Math.random() * (W - 240); const o = this.add.container(x, FY - 500, [this.add.rectangle(0, 0, 34, 70, 0x2fbf71).setStrokeStyle(4, 0xd8ffe6), this.add.rectangle(0, -50, 6, 30, 0x2fbf71)]).setDepth(28); this.pickup = { o, life: 7 }; this.tweens.add({ targets: o, y: FY - 40, duration: 600, ease: 'Bounce.out' }); this.num(x, FY - 200, 'GREEN CANDLE DROP', '#7dffb0', 26) }
+      if (this.pickup) { const k = this.pickup; k.life -= dt; k.o.angle = Math.sin(this.time.now / 150) * 8
+        if (Math.abs(k.o.x - p.x) < 60 && p.y > FY - 220 && k.o.y > FY - 200) { p.hp = Math.min(100, p.hp + 15); p.meter = Math.min(100, p.meter + 20); this.num(p.x, p.y - p.h - 40, '+15 HP · WAGMI', '#7dffb0', 32); sfx.up(); k.life = 0 }
+        if (k.life <= 0) { k.o.destroy(); this.pickup = null } }
+    }
     if (this.phase !== 'fight') return
     const p = this.p
-    if (run.boss === 1 || (run.boss === 3 && this.active.some(k => k.startsWith('camp')))) {
-      const rate = run.boss === 1 ? 14 : 6
+    if (BK() === 'exitliq' || (FINAL() && this.active.some(k => k.startsWith('camp')))) {
+      const rate = BK() === 'exitliq' ? 14 : 6
       this.walls.l = Math.min(330, this.walls.l + rate * dt); this.walls.r = Math.max(950, this.walls.r - rate * dt)
       if (p.x < this.walls.l + 45 || p.x > this.walls.r - 45) { this.cornerT = (this.cornerT || 0) + dt; if (this.cornerT > 2) { this.cornerT = 0; this.hurtPlayer(7, (p.x < W / 2 ? 1 : -1) * 500); this.num(p.x, FY - 260, 'NO EXIT', '#b38bff', 36) } } else this.cornerT = 0
     }
-    if (run.boss === 2 || (run.boss === 3 && this.tiles)) {
-      for (const t of this.tiles) { if (t.warn > 0) { t.warn -= dt; if (t.warn <= 0) t.gone = run.boss === 2 ? 3.2 : 2.4 } else if (t.gone > 0) t.gone -= dt }
+    if (BK() === 'rugpull' || (FINAL() && this.tiles)) {
+      for (const t of this.tiles) { if (t.warn > 0) { t.warn -= dt; if (t.warn <= 0) t.gone = BK() === 'rugpull' ? 3.2 : 2.4 } else if (t.gone > 0) t.gone -= dt }
       this.tileT -= dt
       if (this.tileT <= 0) {
-        this.tileT = run.boss === 2 ? 3.4 : 5
+        this.tileT = BK() === 'rugpull' ? 3.4 : 5
         const i = this.tileHeat.indexOf(Math.max(...this.tileHeat))
         for (const j of [i, i + (Math.random() < 0.5 ? -1 : 1)]) if (this.tiles[j] && !this.tiles[j].gone) this.tiles[j].warn = 0.9
         this.tileHeat = this.tileHeat.map(h => h * 0.5); sfx.warn()
@@ -773,8 +863,8 @@ class Fight extends Phaser.Scene {
       this.slow = 1; this.cameras.main.zoomTo(1, 300); this.cameras.main.pan(W / 2, H / 2, 300); sfx.win()
       this.mergeStats()
       const learned = analyze(this.stats); run.learned.push(...learned)
-      if (run.boss === 3) { stopMusic(); this.time.delayedCall(600, () => this.scene.start('results')); return }
-      this.learnedCard(learned, pick(BOSS_LINES[this.B.key].win), () => { run.boss++; this.scene.restart({ retry: false }) })
+      if (FINAL()) { stopMusic(); this.time.delayedCall(600, () => this.scene.start('results')); return }
+      this.learnedCard(learned, pick(BOSS_LINES[this.B.key].win), () => this.perkPick(() => { run.boss++; this.scene.restart({ retry: false }) }))
     })
   }
   updBossKO(dt: number) { const b = this.boss; b.vy += 2200 * dt; b.y = Math.min(FY, b.y + b.vy * dt); b.x += b.kb * dt; b.kb *= 0.95 }
@@ -820,9 +910,9 @@ class Fight extends Phaser.Scene {
     const p = this.p, b = this.boss, B = this.B, g = this.ui, f = this.fx, tm = this.time.now / 1000, f2 = this.fx2
     f.clear(); f2.clear()
     // walls
-    if (run.boss === 1 || this.walls.l > 41) { f.fillStyle(0x6b3fb0, 0.85).fillRect(0, 0, this.walls.l, FY); f.fillRect(this.walls.r, 0, W - this.walls.r, FY); f.fillStyle(0xb38bff).fillRect(this.walls.l - 6, 0, 6, FY).fillRect(this.walls.r, 0, 6, FY) }
+    if (BK() === 'exitliq' || this.walls.l > 41) { f.fillStyle(0x6b3fb0, 0.85).fillRect(0, 0, this.walls.l, FY); f.fillRect(this.walls.r, 0, W - this.walls.r, FY); f.fillStyle(0xb38bff).fillRect(this.walls.l - 6, 0, 6, FY).fillRect(this.walls.r, 0, 6, FY) }
     // tiles
-    if (run.boss >= 2) this.tiles.forEach((t, i) => {
+    if (TILES()) this.tiles.forEach((t, i) => {
       const x = 40 + i * 100
       if (t.gone > 0) { f.fillStyle(0x000000, 1).fillRect(x, FY, 100, H - FY) }
       else { f.fillStyle(t.warn > 0 && Math.floor(tm * 12) % 2 ? 0xff4040 : 0x6b3f6e, t.warn > 0 ? 0.9 : 0.6).fillRect(x + 2, FY + 2, 96, 26); f.lineStyle(2, 0xd9a0ff, 0.4).strokeRect(x + 2, FY + 2, 96, 26) }
@@ -843,36 +933,50 @@ class Fight extends Phaser.Scene {
     if (p.st !== 'dead') { pi.setPosition(p.x, p.y - (p.st === 'roll' ? 30 : 0)).setScale(ps * sx * (p.face < 0 ? -1 : 1), ps * sy).setFlipX(false).setAngle(ang).setOrigin(0.5, p.st === 'roll' ? 0.5 : 1); if (p.st === 'roll') pi.y = p.y - p.h * 0.4 }
     pi.setAlpha(p.iframe > 0 && p.st !== 'roll' && Math.floor(tm * 20) % 2 ? 0.5 : 1)
     {
-      const P: any = {}, fd = p.face, sw = Math.sin(tm * 16)
-      const fist = (fx: number, fy: number, r = 26, col = 0xffe9c2) => { f2.fillStyle(0xffffff, 0.35).fillTriangle(p.x, fy - 14, p.x, fy + 14, fx, fy); f2.fillStyle(col, 1).fillCircle(fx, fy, r).lineStyle(4, 0x2a1600, 1).strokeCircle(fx, fy, r) }
+      const P: any = {}, fd = p.face, sw = Math.sin(tm * 14), dt = this.game.loop.delta / 1000
+      const sh = { x: p.x + fd * 12, y: p.y - p.h * 0.7 }
+      const arm = (fx: number, fy: number, r = 24, col = 0xffe9c2, streak = true) => {
+        if (streak) f2.fillStyle(0xffffff, 0.3).fillTriangle(sh.x, sh.y - 12, sh.x, sh.y + 12, fx, fy)
+        f2.lineStyle(30, 0x000000, 1).lineBetween(sh.x, sh.y, fx, fy); f2.lineStyle(22, run.hero === 'heroF' ? 0x23253a : 0x1e2235, 1).lineBetween(sh.x, sh.y, fx, fy)
+        f2.fillStyle(col, 1).fillCircle(fx, fy, r).lineStyle(4, 0x2a1600, 1).strokeCircle(fx, fy, r)
+      }
+      const leg = (fx: number, fy: number) => { const hx = p.x, hy = p.y - p.h * 0.42; f2.lineStyle(32, 0x000000, 1).lineBetween(hx, hy, fx, fy); f2.lineStyle(24, 0x1b1b2b, 1).lineBetween(hx, hy, fx, fy); f2.fillStyle(0xf2f2f2, 1).fillEllipse(fx + fd * 8, fy, 50, 28).lineStyle(4, 0x111111, 1).strokeEllipse(fx + fd * 8, fy, 50, 28) }
       if (p.st === 'idle' && p.ground) {
-        if (Math.abs(p.vx) > 10) { P.ba = sw * 14; P.ta = -sw * 4 + 6; P.ty = -Math.abs(sw) * 14; P.bsy = 1 - Math.abs(sw) * 0.08 } // walk cycle
-        else { P.ty = Math.sin(tm * 5) * 6; P.ta = Math.sin(tm * 2.5) * 2 } // breathing
+        if (Math.abs(p.vx) > 10) { P.ba = sw * 20; P.ta = 9 - sw * 5; P.ty = -Math.abs(sw) * 18; P.tx = 8; P.sq = 1 + Math.abs(sw) * 0.06
+          this.dustT -= dt; if (this.dustT <= 0) { this.dustT = 0.09; this.burst(p.x - fd * 30, FY, 3, 0xd8c8a0) } }
+        else { const br = Math.sin(tm * 4.4); P.ty = br * 8; P.ta = Math.sin(tm * 2.2) * 4; P.tx = Math.sin(tm * 2.2) * 6; P.sq = 1 + br * 0.035 } // idle sway + breathing
       }
-      if (!p.ground && p.st !== 'roll' && p.st !== 'attack') { P.ba = -25; P.bsy = 0.82; P.ta = p.vy < 0 ? -8 : 6 } // jump tuck
+      if (!p.ground && p.st !== 'roll' && p.st !== 'attack') { P.ba = -30; P.bsy = 0.8; P.ta = p.vy < 0 ? -10 : 8; P.sq = p.vy < 0 ? 1.12 : 0.95 } // jump stretch / fall
+      if (this.landT > 0) { this.landT -= dt; const l = this.landT / 0.16; P.sq = 1 - 0.22 * l; P.ty = (P.ty || 0) + 20 * l }
       if (p.st === 'attack') {
-        const m = MOVES[p.move], k = Math.min(1, p.t / m.dur), pk = Math.sin(k * Math.PI), reach = pk * m.range
-        const hy = p.y - p.h * 0.62
-        if (p.move === 'uppercut') { P.ta = -22 * pk; P.ty = -40 * pk; P.ba = 10 * pk; fist(p.x + fd * (40 + reach * 0.6), hy - 90 * pk, 30) }
-        else if (p.move === 'sweep') { P.ta = 20 * pk; P.ty = 40 * pk; P.ba = 70 * pk; f2.lineStyle(26, 0x1b1b2b, 1).lineBetween(p.x, p.y - 40, p.x + fd * (40 + reach), p.y - 18); f2.fillStyle(0xffffff, 1).fillEllipse(p.x + fd * (40 + reach), p.y - 18, 46, 26) }
-        else if (p.move === 'slam') { P.ta = 25; P.ty = 30; P.bsy = 0.85; fist(p.x + fd * 60, p.y - 40, 32) }
-        else if (p.move === 'squeeze') { P.ta = Math.sin(tm * 40) * 10; fist(p.x + fd * (70 + Math.abs(Math.sin(tm * 30)) * 60), hy + Math.sin(tm * 25) * 30, 22, 0xffd23f) }
-        else { const big = p.move === 'heavy' || p.move === 'finisher'; P.ta = 12 * pk; P.tx = 30 * pk; P.ba = -8 * pk; fist(p.x + fd * (40 + reach), hy, big ? 34 : 26, big ? 0xffe066 : 0xffe9c2) }
-        P.ta = (P.ta || 0) * 1; if (fd < 0) { /* container mirrors via negative scaleX */ }
+        const m = MOVES[p.move], t = p.t
+        const antic = t < m.a0 ? t / Math.max(0.01, m.a0) : 0
+        const ext = t < m.a0 ? 0 : t <= m.a1 ? 1 - Math.pow(1 - (t - m.a0) / Math.max(0.01, m.a1 - m.a0), 3) : Math.max(0, 1 - (t - m.a1) / Math.max(0.01, m.dur - m.a1))
+        const reach = m.range * ext
+        P.ta = 16 * ext - 14 * antic; P.tx = 36 * ext - 24 * antic; P.ba = -10 * ext; P.sq = 1 - 0.1 * antic + 0.07 * ext
+        if (p.move === 'uppercut') { P.ta = -26 * ext + 10 * antic; P.ty = -46 * ext + 20 * antic; P.sq = 1 - 0.15 * antic + 0.15 * ext; arm(sh.x + fd * (30 + reach * 0.5) - fd * 30 * antic, sh.y + 70 * antic - 140 * ext, 30) }
+        else if (p.move === 'sweep') { P.ta = 28 * ext; P.ty = 46 * ext; P.ba = 60 * ext; P.sq = 0.9; leg(p.x + fd * (30 + reach), p.y - 18) }
+        else if (p.move === 'moon') { P.ta = -18; P.ba = 50; P.sq = 1.08; leg(p.x + fd * (60 + 120 * ext), p.y - p.h * 0.45); this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.035; this.ghost(pi, run.hero, 0xffd23f) } }
+        else if (p.move === 'slam') { P.ta = 30; P.ty = 34; P.sq = 0.82; arm(p.x + fd * 70, p.y - 40, 32) }
+        else if (p.move === 'squeeze') { P.ta = Math.sin(tm * 40) * 12; P.tx = 20; const j = Math.abs(Math.sin(tm * 30)); arm(sh.x + fd * (40 + j * 110), sh.y + Math.sin(tm * 25) * 34, 22, 0xffd23f) }
+        else { const big = p.move === 'heavy' || p.move === 'finisher'; arm(sh.x + fd * (reach - 34 * antic), sh.y + (p.move === 'air' ? 30 * ext : 0), big ? 34 : 26, big ? 0xffe066 : 0xffe9c2, ext > 0.2)
+          if (p.move === 'dash') { this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.035; this.ghost(pi, run.hero) } } }
       }
-      if (p.st === 'roll') { P.ba = -60; P.bsy = 0.7; P.ta = 30 }
-      if (p.st === 'block') { P.ta = -10; P.tx = -14; f2.fillStyle(0x99ccff, 0.55).fillRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10); f2.lineStyle(4, 0xffffff, 0.8).strokeRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10) }
-      if (p.st === 'charge') { P.ta = -14; P.tx = -20; P.ty = 10 }
-      if (p.st === 'hurt') { P.ta = -26; P.tx = -30; P.ba = 12 }
+      if (p.st === 'charge') { const c = Math.min(1, this.holdT / 0.55); P.ta = -16 * c; P.tx = -24 * c; P.ty = 12 * c; P.sq = 1 - 0.12 * c; arm(sh.x - fd * 30 * c, sh.y + 10, 26 + 8 * c, c >= 1 ? 0xffe066 : 0xffe9c2, false); if (c >= 1) f2.lineStyle(4, 0xffe066, 0.5 + 0.5 * Math.sin(tm * 30)).strokeCircle(p.x, p.y - p.h / 2, p.h * 0.6) }
+      if (p.st === 'roll') { P.ba = -60; P.bsy = 0.7; P.ta = 30; this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.04; this.ghost(pi, run.hero) } }
+      if (p.st === 'evade') { P.ta = -22 * p.evDir * fd; P.tx = -20; P.ba = 14; P.sq = 0.92; this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.03; this.ghost(pi, run.hero, 0x5bc8ff) } }
+      if (p.dashT > 0 && p.st === 'idle') { P.ta = 18; P.sq = 0.94; this.ghostT -= dt; if (this.ghostT <= 0) { this.ghostT = 0.035; this.ghost(pi, run.hero) } }
+      if (p.st === 'block') { P.ta = -10; P.tx = -14; P.sq = 0.95; f2.fillStyle(0x99ccff, 0.55).fillRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10); f2.lineStyle(4, 0xffffff, 0.8).strokeRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10) }
+      if (p.st === 'hurt') { const k = Math.max(0, 1 - p.t / 0.3); P.ta = -30 * k; P.tx = -34 * k; P.ba = 14 * k; P.sq = 1 - 0.12 * k }
       if (p.st === 'dead') { P.ta = -40; P.ba = 20 }
-      const fa = (this.time.now - this.fireT) / 1000
-      if (fa < 0.25) { const r = 1 - fa / 0.25; P.ta = (P.ta || 0) - 18 * r; P.tx = (P.tx || 0) - 40 * r; const gx = p.x + fd * 90, gy = p.y - p.h * 0.6; f2.fillStyle(0xfff6a0, r).fillCircle(gx, gy, 46 * r + 10); f2.fillStyle(0xffffff, r).fillCircle(gx, gy, 22 * r) }
+      if (this.counterT > 0) f2.lineStyle(3, 0x7dffb0, 0.6).strokeCircle(p.x, p.y - p.h / 2, p.h * 0.55 + Math.sin(tm * 20) * 6)
+      if (this.combo >= 2) { const rk = RANKS.find(r => this.combo >= r[0]); this.comboTxt.setText(this.combo + ' HIT' + (rk ? '\n' + rk[1] : '')).setColor(rk ? rk[2] : '#fff').setAlpha(Math.min(1, this.comboT)).setScale(1 + Math.max(0, this.comboT - 1.3) * 0.8) } else this.comboTxt.setAlpha(0)
       this.rigP.sync(pi, P)
     }
     // boss sprite
     const bi = this.bImg, bs = B.h / bi.height
     let bx = 1, by = 1, ba = 0
-    const breathe = Math.sin(tm * (run.boss === 0 ? 9 : 3.5)) * 0.03
+    const breathe = Math.sin(tm * (BK() === 'stoploss' ? 9 : 3.5)) * 0.03
     bx = 1 - breathe; by = 1 + breathe
     if (b.st === 'windup') { bx = 1.1; by = 0.92; bi.setTint(0xff9090) } else if (b.flash > 0) bi.setTintFill(0xffffff); else bi.clearTint()
     if (b.st === 'swipe') { bx = 1.15; by = 0.95; ba = b.face * 8 }
@@ -881,12 +985,24 @@ class Fight extends Phaser.Scene {
     const fl = B.flip ? (b.face < 0 ? -1 : 1) : 1
     bi.setPosition(b.x, b.y).setScale(bs * bx * fl, bs * by).setAngle(ba)
     {
-      const P: any = {}, bt = Math.sin(tm * (run.boss === 0 ? 9 : 3.5))
-      P.ty = bt * 10; P.ta = bt * 2
-      if (b.st === 'idle' && Math.abs(b.vx || 0) > 10) { const sw = Math.sin(tm * 12); P.ba = sw * 10; P.ty = -Math.abs(sw) * 12 }
-      if (b.st === 'windup') { P.ta = -16 + Math.sin(tm * 50) * 3; P.tx = -30; P.ty = 14; P.bsy = 0.92 }
-      if (b.st === 'swipe') { P.ta = 24; P.tx = 60; P.ba = -10; f2.lineStyle(14, 0xffffff, 0.7).beginPath().arc(b.x + b.face * 60, b.y - B.h * 0.6, B.h * 0.45, b.face > 0 ? -1.2 : Math.PI - 0.6, b.face > 0 ? 0.6 : Math.PI + 1.2).strokePath() }
-      if (b.st === 'stagger') { P.ta = -20; P.tx = -24; P.ba = 8 }
+      const P: any = {}, bt = Math.sin(tm * (BK() === 'stoploss' ? 9 : 3.5))
+      P.ty = bt * 12; P.ta = bt * 3; P.sq = 1 + bt * 0.03
+      if (b.enraged) { f.fillStyle(0xff2020, 0.12 + 0.08 * Math.sin(tm * 8)).fillEllipse(b.x, b.y - B.h / 2, B.h * 0.9, B.h * 1.15); P.ta += Math.sin(tm * 30) * 1.5 }
+      if (b.st === 'idle' && !b.air && Math.abs(this.boss.x - (this.lastBX ?? b.x)) > 0.5) { const sw = Math.sin(tm * 12); P.ba = sw * 12; P.ty = -Math.abs(sw) * 14 }
+      this.lastBX = b.x
+      if (b.st === 'windup') { const pulse = 0.5 + 0.5 * Math.sin(tm * 40); P.ta = -18 + Math.sin(tm * 50) * 3; P.tx = -34; P.ty = 16; P.sq = 0.88
+        f.fillStyle(b.unb ? 0xb050ff : 0xff3030, 0.18 + 0.2 * pulse).fillEllipse(b.x, b.y - B.h / 2, B.h * 0.85, B.h * 1.1)
+        f2.fillStyle(0xffd23f, 1).fillCircle(b.x, b.y - B.h - 40, 22); f2.fillStyle(0x000000, 1).fillRect(b.x - 4, b.y - B.h - 54, 8, 18).fillRect(b.x - 4, b.y - B.h - 32, 8, 6)
+        const a = b.atk, al = 0.25 + 0.35 * pulse
+        if (a === 'laser') { f.fillStyle(0xff2020, al).fillRect(b.tx - 60, 0, 120, FY); f.lineStyle(3, 0xffffff, 0.7).strokeRect(b.tx - 60, 0, 120, FY) }
+        if (a === 'charge') { const x0 = b.x, x1 = b.face > 0 ? this.walls.r : this.walls.l; f.fillStyle(0xffb347, al).fillRect(Math.min(x0, x1), FY - 180, Math.abs(x1 - x0), 180) }
+        if (a === 'lob') for (const off of [-140, 0, 140]) f.fillStyle(0xffd23f, al).fillEllipse(b.tx + off, FY, 130, 26)
+        if (a === 'fud' || a === 'shoot') f.fillStyle(0xaaaaaa, al * 0.6).fillRect(Math.min(b.x, p.x), FY - 250, Math.abs(p.x - b.x), 250)
+      }
+      if (b.st === 'swipe') { P.ta = 26; P.tx = 64; P.ba = -12; P.sq = 1.08; if (b.atk === 'swipe' || b.atk === 'anti' || b.atk === 'read') f.lineStyle(14, 0xffffff, 0.7).beginPath().arc(b.x + b.face * 60, b.y - B.h * 0.6, B.h * 0.45, b.face > 0 ? -1.2 : Math.PI - 0.6, b.face > 0 ? 0.6 : Math.PI + 1.2).strokePath()
+        if (b.rush > 0) { P.ta = 30; this.ghostT2 = (this.ghostT2 || 0) - this.game.loop.delta / 1000; if (this.ghostT2 <= 0) { this.ghostT2 = 0.04; this.ghost(bi, B.key, 0xffb347) } } }
+      if (b.st === 'stagger') { P.ta = -24; P.tx = -28; P.ba = 10; P.sq = 0.93 }
+      if (b.flash > 0) P.sq = 0.9
       if (this.phase === 'ko') { P.ta = -35; P.ba = 15 }
       this.rigB.sync(bi, P)
     }
@@ -932,7 +1048,7 @@ class Results extends Phaser.Scene {
 <div class="stat">Time<b>${fmt(t)}</b></div><div class="stat">Deaths<b>${run.deaths}</b></div>
 <div class="stat">Habits caught<b>${habits}</b></div><div class="stat">Combos used<b>${run.combos}</b></div></div>
 <div class="learned">${run.learned.map(k => 'IT LEARNED: ' + hl(k)).join('<br>') || 'It learned nothing. You are a ghost wallet.'}</div>
-<p style="margin:10px 0 4px">Favourite move: <b>${MOVES[fav]?.label || 'PUMP'}</b></p>
+<p style="margin:10px 0 4px">Favourite move: <b>${MOVES[fav]?.label || 'SEND IT'}</b></p>
 <p>Signed in as <b>@${esc(session.username)}</b></p>
 <div><button id="sb">Submit to leaderboard</button><button id="card" class="alt">Download share card</button><a class="btn" id="x" target="_blank" rel="noopener">Share on X</a></div>
 <div><button id="lb" class="alt">Leaderboard</button><button id="again" class="alt">Play again</button></div><div id="msg" class="learned"></div>`
@@ -944,7 +1060,7 @@ class Results extends Phaser.Scene {
       const name = session.username
       if (!name) { $('msg').textContent = 'Log in first.'; return }
       $('sb').disabled = true
-      const ok = await submit({ name, hero: run.hero === 'heroF' ? 'F' : 'M', time_ms: Math.max(30000, Math.round(t)), deaths: Math.min(999, run.deaths), habits, combos: Math.min(100000, run.combos) })
+      const ok = run.debug ? false : await submit({ name, hero: run.hero === 'heroF' ? 'F' : 'M', time_ms: Math.max(30000, Math.round(t)), deaths: Math.min(999, run.deaths), habits, combos: Math.min(100000, run.combos) })
       $('msg').textContent = ok ? 'On the global board. Screenshot it before someone faster shows up.' : 'Saved on this device. The global board is having a moment.'
     }
     $('card').onclick = () => this.card(t, habits, fav)
@@ -962,7 +1078,7 @@ class Results extends Phaser.Scene {
     x.fillStyle = '#fff'; x.font = '52px "Lilita One", Impact'; x.fillText('Beat Bear Szn in ' + fmt(t), 420, 200)
     x.fillStyle = '#ff8f8f'; x.font = '36px "Lilita One", Impact'; x.fillText('It caught ' + habits + ' of my habits', 420, 260)
     x.font = 'bold 26px monospace'; run.learned.slice(0, 4).forEach((k, i) => x.fillText('IT LEARNED: ' + hl(k), 420, 320 + i * 40))
-    x.fillStyle = '#7dffb0'; x.font = '30px "Lilita One", Impact'; x.fillText(run.deaths + ' deaths · ' + run.combos + ' combos · fav: ' + (MOVES[fav]?.label || 'PUMP'), 420, 520)
+    x.fillStyle = '#7dffb0'; x.font = '30px "Lilita One", Impact'; x.fillText(run.deaths + ' deaths · ' + run.combos + ' combos · fav: ' + (MOVES[fav]?.label || 'SEND IT'), 420, 520)
     x.fillStyle = '#ccc'; x.font = '24px Nunito, sans-serif'; x.fillText(location.host + location.pathname, 420, 580)
     const a = document.createElement('a'); a.download = 'it-learns-you.png'; a.href = c.toDataURL('image/png'); a.click()
   }
