@@ -91,8 +91,18 @@ function bg(scene: Phaser.Scene, c1 = 0x1e1834, c2 = 0x5a3a6a) {
   }
   return g
 }
+declare const __BUILD__: string
+const BUILD = __BUILD__
+const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const STANDALONE = (navigator as any).standalone || matchMedia('(display-mode: standalone)').matches
+function fullScreen() {
+  const el: any = document.documentElement, fn = el.requestFullscreen || el.webkitRequestFullscreen
+  if (fn && !IOS) { try { fn.call(el)?.then?.(() => (screen.orientation as any)?.lock?.('landscape').catch(() => {})).catch(() => {}) } catch {} return }
+  overlay(STANDALONE ? '<h2>YOU ARE FULL SCREEN</h2><p>Already running as an app. Peak degen efficiency.</p><button id="ok">Nice</button>' : '<h2>FULL SCREEN ON iPHONE</h2><p>Safari won\'t let websites hide its bars. Do this once:</p><ol><li>Tap <b>Share</b> (square with the arrow)</li><li>Tap <b>Add to Home Screen</b></li><li>Open <b>It Learns You</b> from your home screen</li></ol><p>It runs edge to edge like a real app. In Chrome on iPhone, use Safari for this step.</p><button id="ok">Got it</button>')
+  const b = document.getElementById('ok'); if (b) b.onclick = () => overlay('')
+}
 function goLandscape() {
-  if (!('ontouchstart' in window)) return
+  if (!('ontouchstart' in window) || IOS) return
   try { const el: any = document.documentElement; (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.then?.(() => (screen.orientation as any)?.lock?.('landscape').catch(() => {})).catch(() => {}) } catch {}
 }
 function authScreen(done: () => void) {
@@ -183,6 +193,9 @@ class Title extends Phaser.Scene {
     btn(this, W / 2, 365, 'READ THE DOCS', () => this.scene.start('howto'))
     btn(this, W / 2, 440, 'LEADERBOARD', () => showBoard(() => this.scene.restart()))
     btn(this, W / 2, 515, 'SETTINGS', () => this.scene.start('settings'))
+    this.add.text(20, H - 20, BUILD, { fontFamily: 'monospace', fontSize: '16px', color: '#aaa' }).setOrigin(0, 1)
+    const fs = this.add.text(W - 20, 20, '⛶ FULL SCREEN', { fontFamily: FONT, fontSize: '22px', color: '#fff', backgroundColor: '#0008', padding: { x: 12, y: 6 } }).setOrigin(1, 0).setInteractive({ useHandCursor: true })
+    fs.on('pointerdown', () => fullScreen())
     const lo = this.add.text(W - 20, H - 20, 'log out', { fontFamily: 'Nunito', fontSize: '16px', color: '#ddd' }).setOrigin(1).setInteractive({ useHandCursor: true })
     lo.on('pointerdown', () => { signOut(); location.reload() })
     const ticker = Object.values(HABITS).map(h => 'IT LEARNED: ' + h.lines[0])
@@ -281,10 +294,29 @@ class Settings extends Phaser.Scene {
 }
 
 type Proj = { o: Phaser.GameObjects.Arc | Phaser.GameObjects.Rectangle; vx: number; vy: number; dmg: number; fromBoss: boolean; life: number; big?: boolean }
+
+// ---------- cut-out rig: each approved sprite is split at the waist into torso+head and legs, posed every frame ----------
+class Rig {
+  c: Phaser.GameObjects.Container; top: Phaser.GameObjects.Image; bot: Phaser.GameObjects.Image; h: number; cut: number
+  constructor(sc: Phaser.Scene, key: string, cutFrac: number, depth: number) {
+    const t = sc.textures.get(key).getSourceImage() as HTMLImageElement, w = t.width; this.h = t.height; this.cut = Math.round(t.height * cutFrac)
+    this.bot = sc.add.image(0, 0, key).setCrop(0, this.cut, w, this.h - this.cut).setOrigin(0.5, cutFrac)
+    this.top = sc.add.image(0, 0, key).setCrop(0, 0, w, this.cut).setOrigin(0.5, cutFrac)
+    this.c = sc.add.container(0, 0, [this.bot, this.top]).setDepth(depth)
+  }
+  // src: the (hidden) proxy image whose transform the old code already computes; pose in texture px / degrees
+  sync(src: Phaser.GameObjects.Image, ps: { ta?: number; tx?: number; ty?: number; ba?: number; bx?: number; by?: number; bsy?: number }) {
+    const wy = -(this.h - this.cut) + (src.originY === 0.5 ? this.h / 2 : 0)
+    this.c.setPosition(src.x, src.y).setScale(src.scaleX, src.scaleY).setAngle(src.angle).setAlpha(src.alpha)
+    this.top.setPosition(ps.tx || 0, wy + (ps.ty || 0)).setAngle(ps.ta || 0)
+    this.bot.setPosition(ps.bx || 0, wy + (ps.by || 0)).setAngle(ps.ba || 0).setScale(1, ps.bsy || 1)
+    for (const i of [this.top, this.bot]) { if (src.isTinted) { (i as any).tintFill = src.tintFill; i.setTint(src.tintTopLeft) } else i.clearTint() }
+  }
+}
 class Fight extends Phaser.Scene {
   constructor() { super('fight') }
   B: any; p: any; boss: any; pImg!: Phaser.GameObjects.Image; bImg!: Phaser.GameObjects.Image
-  ui!: Phaser.GameObjects.Graphics; fx!: Phaser.GameObjects.Graphics; timerT!: Phaser.GameObjects.Text; info!: Phaser.GameObjects.Text
+  fx2!: Phaser.GameObjects.Graphics; rigP!: Rig; rigB!: Rig; fireT = -9; ui!: Phaser.GameObjects.Graphics; fx!: Phaser.GameObjects.Graphics; timerT!: Phaser.GameObjects.Text; info!: Phaser.GameObjects.Text
   emit!: Phaser.GameObjects.Particles.ParticleEmitter; projs: Proj[] = []; hazards: any[] = []
   stats!: Stats; freeze = 0; slow = 1; phase = 'intro'; readKeys!: () => void
   walls = { l: 40, r: 1240 }; tiles: { gone: number; warn: number }[] = []; tileHeat: number[] = []; tileT = 0
@@ -296,16 +328,17 @@ class Fight extends Phaser.Scene {
     const AK = run.arena === 'home' ? HOME[run.boss] : run.arena; this.arenaKey = AK
     const M = margin(this) + 40, n0 = this.children.list.length; paintArena(this, AK, W + 2 * M); this.children.list.slice(n0).forEach((o: any) => { o.x -= M }); this.add.rectangle(W / 2, H / 2, W + 2 * M, H, B.tint[1], 0.12)
     const fl = this.add.graphics(); fl.fillStyle(ARENAS.find(a => a.key === AK)!.floor, 1).fillRect(-M, FY, W + 2 * M, H - FY); fl.fillStyle(0x000000, 0.25).fillRect(-M, FY, W + 2 * M, H - FY); fl.fillStyle(0xffffff, 0.08).fillRect(-M, FY, W + 2 * M, 4)
-    this.fx = this.add.graphics()
+    this.fx = this.add.graphics(); this.fx2 = this.add.graphics().setDepth(23)
     this.stats = newStats(); this.projs = []; this.hazards = []; this.freeze = 0; this.slow = 1; this.tapCount = 0; this.holdT = 0; this.stillT = 0
     this.walls = { l: 40, r: 1240 }; this.tiles = Array.from({ length: 12 }, () => ({ gone: 0, warn: 0 })); this.tileHeat = new Array(12).fill(0); this.tileT = 4
-    const ph = 200
+    const ph = 240
     this.p = { x: 330, y: FY, vx: 0, vy: 0, face: 1, hp: DEMO && !this.retry && run.boss === 0 ? 12 : 100, meter: DEMO ? 60 : 0, st: 'idle', t: 0, move: '', hit: false, iframe: 0, ground: true, h: ph, dashT: 0, rollDir: 0 }
     this.boss = { x: 960, y: FY, vy: 0, face: -1, hp: B.hp, max: B.hp, st: 'idle', t: 1.2, cd: 1.2, hit: false, air: false, armor: 0, flash: 0, atk: '', tx: 0, sniper: 0, blocked: 0 }
     if (DEMO && this.retry) this.boss.hp = this.boss.max = 70
     this.add.ellipse(0, 0, 10, 10).setVisible(false)
     this.pImg = this.add.image(this.p.x, FY, run.hero).setOrigin(0.5, 1); this.pImg.setScale(ph / this.pImg.height)
     this.bImg = this.add.image(this.boss.x, FY, B.key).setOrigin(0.5, 1); this.bImg.setScale(B.h / this.bImg.height)
+    this.rigB = new Rig(this, B.key, 0.55, 19); this.rigP = new Rig(this, run.hero, 0.5, 21); this.pImg.setAlpha(0).setVisible(false); this.bImg.setVisible(false)
     this.emit = this.add.particles(0, 0, 'dot', { speed: { min: 150, max: 520 }, scale: { start: 0.9, end: 0 }, lifespan: 420, gravityY: 900, emitting: false, tint: [0xffe066, 0xffffff, 0xff9f43] })
     this.ui = this.add.graphics().setDepth(50)
     this.timerT = this.add.text(W / 2, 22, '', { fontFamily: FONT, fontSize: '34px', color: '#fff', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5, 0).setDepth(51)
@@ -563,7 +596,7 @@ class Fight extends Phaser.Scene {
     p.st = 'attack'; p.move = 'punch'; p.t = 0; p.hit = true
   }
   pump() {
-    const p = this.p; p.meter = 0; sfx.pump(); this.shake(0.012, 300); run.combos++
+    const p = this.p; p.meter = 0; this.fireT = this.time.now; sfx.pump(); this.shake(0.012, 300); run.combos++
     this.stats.moves['pump'] = (this.stats.moves['pump'] || 0) + 1; run.moveUse['pump'] = (run.moveUse['pump'] || 0) + 1
     const o = this.add.rectangle(p.x + p.face * 60, p.y - p.h * 0.55, 120, 46, 0x5dff9a).setDepth(30).setStrokeStyle(6, 0xd8ffe6)
     this.projs.push({ o, vx: p.face * 1300, vy: 0, dmg: 34, fromBoss: false, life: 1.5, big: true })
@@ -784,8 +817,8 @@ class Fight extends Phaser.Scene {
     if (DEMO) this.time.delayedCall(3200, go)
   }
   draw() {
-    const p = this.p, b = this.boss, B = this.B, g = this.ui, f = this.fx, tm = this.time.now / 1000
-    f.clear()
+    const p = this.p, b = this.boss, B = this.B, g = this.ui, f = this.fx, tm = this.time.now / 1000, f2 = this.fx2
+    f.clear(); f2.clear()
     // walls
     if (run.boss === 1 || this.walls.l > 41) { f.fillStyle(0x6b3fb0, 0.85).fillRect(0, 0, this.walls.l, FY); f.fillRect(this.walls.r, 0, W - this.walls.r, FY); f.fillStyle(0xb38bff).fillRect(this.walls.l - 6, 0, 6, FY).fillRect(this.walls.r, 0, 6, FY) }
     // tiles
@@ -809,6 +842,33 @@ class Fight extends Phaser.Scene {
     if (p.st === 'block') { sx = 0.92; sy = 0.95; pi.setTint(0x99ccff) } else if (p.st === 'hurt') pi.setTintFill(0xff8080); else if (p.st !== 'charge' && p.st !== 'block') pi.clearTint()
     if (p.st !== 'dead') { pi.setPosition(p.x, p.y - (p.st === 'roll' ? 30 : 0)).setScale(ps * sx * (p.face < 0 ? -1 : 1), ps * sy).setFlipX(false).setAngle(ang).setOrigin(0.5, p.st === 'roll' ? 0.5 : 1); if (p.st === 'roll') pi.y = p.y - p.h * 0.4 }
     pi.setAlpha(p.iframe > 0 && p.st !== 'roll' && Math.floor(tm * 20) % 2 ? 0.5 : 1)
+    {
+      const P: any = {}, fd = p.face, sw = Math.sin(tm * 16)
+      const fist = (fx: number, fy: number, r = 26, col = 0xffe9c2) => { f2.fillStyle(0xffffff, 0.35).fillTriangle(p.x, fy - 14, p.x, fy + 14, fx, fy); f2.fillStyle(col, 1).fillCircle(fx, fy, r).lineStyle(4, 0x2a1600, 1).strokeCircle(fx, fy, r) }
+      if (p.st === 'idle' && p.ground) {
+        if (Math.abs(p.vx) > 10) { P.ba = sw * 14; P.ta = -sw * 4 + 6; P.ty = -Math.abs(sw) * 14; P.bsy = 1 - Math.abs(sw) * 0.08 } // walk cycle
+        else { P.ty = Math.sin(tm * 5) * 6; P.ta = Math.sin(tm * 2.5) * 2 } // breathing
+      }
+      if (!p.ground && p.st !== 'roll' && p.st !== 'attack') { P.ba = -25; P.bsy = 0.82; P.ta = p.vy < 0 ? -8 : 6 } // jump tuck
+      if (p.st === 'attack') {
+        const m = MOVES[p.move], k = Math.min(1, p.t / m.dur), pk = Math.sin(k * Math.PI), reach = pk * m.range
+        const hy = p.y - p.h * 0.62
+        if (p.move === 'uppercut') { P.ta = -22 * pk; P.ty = -40 * pk; P.ba = 10 * pk; fist(p.x + fd * (40 + reach * 0.6), hy - 90 * pk, 30) }
+        else if (p.move === 'sweep') { P.ta = 20 * pk; P.ty = 40 * pk; P.ba = 70 * pk; f2.lineStyle(26, 0x1b1b2b, 1).lineBetween(p.x, p.y - 40, p.x + fd * (40 + reach), p.y - 18); f2.fillStyle(0xffffff, 1).fillEllipse(p.x + fd * (40 + reach), p.y - 18, 46, 26) }
+        else if (p.move === 'slam') { P.ta = 25; P.ty = 30; P.bsy = 0.85; fist(p.x + fd * 60, p.y - 40, 32) }
+        else if (p.move === 'squeeze') { P.ta = Math.sin(tm * 40) * 10; fist(p.x + fd * (70 + Math.abs(Math.sin(tm * 30)) * 60), hy + Math.sin(tm * 25) * 30, 22, 0xffd23f) }
+        else { const big = p.move === 'heavy' || p.move === 'finisher'; P.ta = 12 * pk; P.tx = 30 * pk; P.ba = -8 * pk; fist(p.x + fd * (40 + reach), hy, big ? 34 : 26, big ? 0xffe066 : 0xffe9c2) }
+        P.ta = (P.ta || 0) * 1; if (fd < 0) { /* container mirrors via negative scaleX */ }
+      }
+      if (p.st === 'roll') { P.ba = -60; P.bsy = 0.7; P.ta = 30 }
+      if (p.st === 'block') { P.ta = -10; P.tx = -14; f2.fillStyle(0x99ccff, 0.55).fillRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10); f2.lineStyle(4, 0xffffff, 0.8).strokeRoundedRect(p.x + fd * 40 - 14, p.y - p.h * 0.85, 28, p.h * 0.55, 10) }
+      if (p.st === 'charge') { P.ta = -14; P.tx = -20; P.ty = 10 }
+      if (p.st === 'hurt') { P.ta = -26; P.tx = -30; P.ba = 12 }
+      if (p.st === 'dead') { P.ta = -40; P.ba = 20 }
+      const fa = (this.time.now - this.fireT) / 1000
+      if (fa < 0.25) { const r = 1 - fa / 0.25; P.ta = (P.ta || 0) - 18 * r; P.tx = (P.tx || 0) - 40 * r; const gx = p.x + fd * 90, gy = p.y - p.h * 0.6; f2.fillStyle(0xfff6a0, r).fillCircle(gx, gy, 46 * r + 10); f2.fillStyle(0xffffff, r).fillCircle(gx, gy, 22 * r) }
+      this.rigP.sync(pi, P)
+    }
     // boss sprite
     const bi = this.bImg, bs = B.h / bi.height
     let bx = 1, by = 1, ba = 0
@@ -820,6 +880,16 @@ class Fight extends Phaser.Scene {
     if (this.phase === 'ko') ba = -b.face * 70
     const fl = B.flip ? (b.face < 0 ? -1 : 1) : 1
     bi.setPosition(b.x, b.y).setScale(bs * bx * fl, bs * by).setAngle(ba)
+    {
+      const P: any = {}, bt = Math.sin(tm * (run.boss === 0 ? 9 : 3.5))
+      P.ty = bt * 10; P.ta = bt * 2
+      if (b.st === 'idle' && Math.abs(b.vx || 0) > 10) { const sw = Math.sin(tm * 12); P.ba = sw * 10; P.ty = -Math.abs(sw) * 12 }
+      if (b.st === 'windup') { P.ta = -16 + Math.sin(tm * 50) * 3; P.tx = -30; P.ty = 14; P.bsy = 0.92 }
+      if (b.st === 'swipe') { P.ta = 24; P.tx = 60; P.ba = -10; f2.lineStyle(14, 0xffffff, 0.7).beginPath().arc(b.x + b.face * 60, b.y - B.h * 0.6, B.h * 0.45, b.face > 0 ? -1.2 : Math.PI - 0.6, b.face > 0 ? 0.6 : Math.PI + 1.2).strokePath() }
+      if (b.st === 'stagger') { P.ta = -20; P.tx = -24; P.ba = 8 }
+      if (this.phase === 'ko') { P.ta = -35; P.ba = 15 }
+      this.rigB.sync(bi, P)
+    }
     // UI bars
     g.clear()
     const bar = (x: number, y: number, w: number, v: number, col: number, right = false) => {
@@ -909,3 +979,10 @@ class Results extends Phaser.Scene {
 document.addEventListener('gesturestart', e => e.preventDefault())
 document.addEventListener('dblclick', e => e.preventDefault())
 document.addEventListener('touchmove', e => { if (!(e.target as HTMLElement).closest?.('#ov')) e.preventDefault() }, { passive: false })
+
+// keep the canvas glued to the real visible viewport (iOS toolbars, rotation, visualViewport changes)
+const fit = () => { const el = document.getElementById('game')!, vv = window.visualViewport, w = Math.round(vv?.width || innerWidth), h = Math.round(vv?.height || innerHeight); el.style.width = w + 'px'; el.style.height = h + 'px'; (window as any).__game?.scale.refresh() }
+;['resize', 'orientationchange'].forEach(e => addEventListener(e, () => { fit(); setTimeout(fit, 300) })); window.visualViewport?.addEventListener('resize', fit); fit(); setTimeout(fit, 500)
+// stale-cache guard: if the server has a newer build than this page, reload once with a cache-busting query
+fetch('version.json?t=' + Date.now(), { cache: 'no-store' }).then(r => r.json()).then(j => { if (j.v && j.v !== BUILD && !sessionStorage.getItem('ily_rl_' + j.v)) { sessionStorage.setItem('ily_rl_' + j.v, '1'); const u = new URL(location.href); u.searchParams.set('v', j.v); location.replace(u.toString()) } }).catch(() => {})
+navigator.serviceWorker?.getRegistrations?.().then(rs => rs.forEach(r => r.unregister())).catch(() => {})
