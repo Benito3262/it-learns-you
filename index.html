@@ -1,0 +1,19 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>It Learns You — crypto boss rush</title>
+<meta name="description" content="A boss-rush fighter where every boss studies how you play and counters your habits.">
+<link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#120f1c;overflow:hidden;font-family:Nunito,sans-serif;color:#fff;touch-action:none}
+#game{width:100%;height:100%}
+#ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(10,8,20,.72);z-index:10}
+#ov .card{background:linear-gradient(#2a2340,#1b1630);border:3px solid #f5c84c;border-radius:22px;padding:22px 26px;width:min(560px,92vw);max-height:92vh;overflow:auto;box-shadow:0 20px 60px #000a}
+#ov h2{font-family:'Lilita One';font-size:34px;margin:0 0 6px;color:#f5c84c;letter-spacing:1px}
+#ov .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+#ov .stat{background:#ffffff10;border-radius:12px;padding:8px 12px}#ov .stat b{display:block;font-size:22px;color:#7dffb0}
+#ov input{width:100%;box-sizing:border-box;padding:12px;border-radius:12px;border:2px solid #555;background:#0e0b18;color:#fff;font-size:17px;font-family:inherit}
+#ov button,#ov a.btn{display:inline-block;margin:8px 6px 0 0;padding:11px 16px;border:0;border-radius:12px;background:#f5c84c;color:#231a00;font-weight:800;font-size:15px;cursor:pointer;text-decoration:none;font-family:inherit}
+#ov button.alt{background:#3d3560;color:#fff}
+#ov ol{padding-left:22px;margin:6px 0}#ov li{padding:3px 0}#ov li span{float:right;color:#7dffb0}
+#ov .learned{color:#ff8f8f;font-size:14px}
+</style></head><body><div id="game"></div><div id="ov"><div class="card" id="ovc"></div></div>
+<script type="module" src="/src/main.ts"></script></body></html>
